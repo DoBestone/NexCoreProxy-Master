@@ -1,6 +1,14 @@
 # NexCore代理主机
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 基于 x-ui 的多节点网络代理管理系统。
+
+## 一键安装
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh)
+```
 
 ## 核心功能
 
@@ -40,17 +48,17 @@
 
 ## 技术栈
 
-- **后端**: Go + Gin + GORM + SQLite
+- **后端**: Go + Gin + GORM + MySQL
 - **前端**: Vue 3 + Vite + Ant Design Vue 4
 - **架构**: Master-Agent 分布式架构
 - **SSH**: golang.org/x/crypto/ssh
 
-## 快速开始
-
-### 环境要求
+## 环境要求
 
 - MySQL 5.7+ 或 MySQL 8.0+
 - Go 1.22+ (编译时)
+
+## 手动安装
 
 ### 数据库配置
 
@@ -59,9 +67,20 @@
 CREATE DATABASE nexcore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-配置连接（编辑 `.env` 文件）：
+### 编译
+
 ```bash
-DB_HOST=127.0.0.1
+git clone https://github.com/DoBestone/NexCoreProxy-Master.git
+cd NexCoreProxy-Master
+go mod tidy
+go build -o nexcore .
+```
+
+### 配置
+
+创建 `.env` 文件：
+```bash
+DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
 DB_PASS=your_password
@@ -69,24 +88,11 @@ DB_NAME=nexcore
 PORT=8082
 ```
 
-### 启动服务
+### 启动
 
 ```bash
-cd /root/projects/NexCoreProxy-Master
 ./start.sh
 ```
-
-### 停止服务
-
-```bash
-./stop.sh
-```
-
-### 访问地址
-
-- 主控面板: http://localhost:8082
-- 默认账号: admin
-- 默认密码: admin123
 
 ## 使用流程
 
@@ -118,6 +124,7 @@ cd /root/projects/NexCoreProxy-Master
 NexCoreProxy-Master/
 ├── main.go                 # 后端入口
 ├── nexcore                 # 编译后的二进制文件
+├── install.sh              # 一键安装脚本
 ├── start.sh                # 启动脚本
 ├── stop.sh                 # 停止脚本
 ├── internal/
@@ -130,8 +137,6 @@ NexCoreProxy-Master/
 │   ├── src/                # 源码
 │   └── dist/               # 构建产物
 └── data/                   # 数据目录
-    ├── nexcore.db          # SQLite数据库
-    └── nexcore.log         # 日志文件
 ```
 
 ## API接口
@@ -152,23 +157,6 @@ NexCoreProxy-Master/
 ## 关联项目
 
 - **NexCoreProxy-Host**: 节点服务端 (基于 x-ui)
-- 路径: `/root/projects/NexCoreProxy-Host`
-
-## 开发
-
-### 编译后端
-
-```bash
-go build -o nexcore .
-```
-
-### 构建前端
-
-```bash
-cd web
-npm install
-npm run build
-```
 
 ## License
 
