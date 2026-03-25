@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -129,7 +130,18 @@ func (s *UserService) InitAdmin() error {
 		return nil
 	}
 
-	return s.Create("admin", "admin123", "", "admin")
+	// 从环境变量读取管理员账号密码
+	username := os.Getenv("NCP_ADMIN_USER")
+	password := os.Getenv("NCP_ADMIN_PASS")
+	
+	if username == "" {
+		username = "admin"
+	}
+	if password == "" {
+		password = "admin123"
+	}
+
+	return s.Create(username, password, "", "admin")
 }
 
 // PurchasePackage 用户购买套餐

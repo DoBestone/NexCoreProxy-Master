@@ -7,7 +7,53 @@
 ## 一键安装
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh)
+# 基本用法（必须指定密码）
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -pass YourPassword123
+
+# 完整参数
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) \
+  -p 8082 \
+  -u admin \
+  -pass YourPassword123 \
+  --db-host localhost \
+  --db-port 3306 \
+  --db-user root \
+  --db-pass dbpassword \
+  --db-name nexcore
+```
+
+### 安装参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-p, --port` | Web服务端口 | 8082 |
+| `-u, --user` | 管理员用户名 | admin |
+| `-pass, --password` | 管理员密码 | **必填** |
+| `--db-host` | 数据库主机 | localhost |
+| `--db-port` | 数据库端口 | 3306 |
+| `--db-user` | 数据库用户 | root |
+| `--db-pass` | 数据库密码 | 空 |
+| `--db-name` | 数据库名 | nexcore |
+
+### 安装示例
+
+```bash
+# 最简安装（只需指定密码）
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -pass MySecretPass123
+
+# 自定义端口和账号
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -p 9000 -u superadmin -pass StrongPass!
+
+# 完整配置
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) \
+  --port 8082 \
+  --user admin \
+  --password MyPassword123 \
+  --db-host 127.0.0.1 \
+  --db-port 3306 \
+  --db-user root \
+  --db-pass dbpassword \
+  --db-name nexcore
 ```
 
 ## 核心功能

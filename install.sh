@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # NexCore代理主机 一键安装脚本
-# 使用方法: bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh)
+# 使用方法: 
+#   bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -p 8082 -u admin -pass your_password
+#   bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) --port 8082 --user admin --password your_password
 
 set -e
 
@@ -21,10 +23,79 @@ DB_USER="root"
 DB_PASS=""
 DB_NAME="nexcore"
 WEB_PORT="8082"
+ADMIN_USER="admin"
+ADMIN_PASS=""
+
+# 解析参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -p|--port)
+            WEB_PORT="$2"
+            shift 2
+            ;;
+        -u|--user)
+            ADMIN_USER="$2"
+            shift 2
+            ;;
+        -pass|--password)
+            ADMIN_PASS="$2"
+            shift 2
+            ;;
+        --db-host)
+            DB_HOST="$2"
+            shift 2
+            ;;
+        --db-port)
+            DB_PORT="$2"
+            shift 2
+            ;;
+        --db-user)
+            DB_USER="$2"
+            shift 2
+            ;;
+        --db-pass)
+            DB_PASS="$2"
+            shift 2
+            ;;
+        --db-name)
+            DB_NAME="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "使用方法: $0 [选项]"
+            echo ""
+            echo "选项:"
+            echo "  -p, --port PORT       Web服务端口 (默认: 8082)"
+            echo "  -u, --user USER       管理员用户名 (默认: admin)"
+            echo "  -pass, --password     管理员密码 (必填)"
+            echo "  --db-host HOST        数据库主机 (默认: localhost)"
+            echo "  --db-port PORT        数据库端口 (默认: 3306)"
+            echo "  --db-user USER        数据库用户 (默认: root)"
+            echo "  --db-pass PASS        数据库密码"
+            echo "  --db-name NAME        数据库名 (默认: nexcore)"
+            echo ""
+            echo "示例:"
+            echo "  $0 -p 8082 -u admin -pass MyPassword123"
+            echo "  $0 --port 9000 --user admin --password SecretPass --db-pass dbpass"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 echo -e "${green}========================================${plain}"
 echo -e "${green}  $APP_NAME 安装脚本${plain}"
 echo -e "${green}========================================${plain}"
+
+# 检查必填参数
+if [[ -z "$ADMIN_PASS" ]]; then
+    echo -e "${red}错误: 请通过 -pass 或 --password 参数设置管理员密码${plain}"
+    echo ""
+    echo "示例: $0 -pass YourPassword123"
+    exit 1
+fi
 
 # 检查 root
 if [[ $EUID -ne 0 ]]; then
@@ -42,6 +113,9 @@ else
 fi
 
 echo "系统: $OS"
+echo "端口: $WEB_PORT"
+echo "管理员: $ADMIN_USER"
+echo "数据库: $DB_HOST:$DB_PORT/$DB_NAME"
 
 # 安装依赖
 echo -e "${yellow}安装依赖...${plain}"
@@ -80,27 +154,6 @@ else
     git clone $REPO_URL .
 fi
 
-# 配置数据库
-echo ""
-echo -e "${yellow}数据库配置${plain}"
-read -p "数据库主机 [localhost]: " input_db_host
-DB_HOST=${input_db_host:-$DB_HOST}
-
-read -p "数据库端口 [3306]: " input_db_port
-DB_PORT=${input_db_port:-$DB_PORT}
-
-read -p "数据库用户 [root]: " input_db_user
-DB_USER=${input_db_user:-$DB_USER}
-
-read -p "数据库密码: " input_db_pass
-DB_PASS=${input_db_pass:-$DB_PASS}
-
-read -p "数据库名 [nexcore]: " input_db_name
-DB_NAME=${input_db_name:-$DB_NAME}
-
-read -p "Web端口 [8082]: " input_web_port
-WEB_PORT=${input_web_port:-$WEB_PORT}
-
 # 创建数据库
 echo -e "${yellow}创建数据库...${plain}"
 mysql -h$DB_HOST -P$DB_PORT -u$DB_USER -p$DB_PASS -e "CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null || {
@@ -135,7 +188,14 @@ After=network.target mysql.service
 [Service]
 Type=simple
 WorkingDirectory=$APP_DIR
-ExecStart=$APP_DIR/nexcore -port $WEB_PORT -db-host $DB_HOST -db-port $DB_PORT -db-user $DB_USER -db-pass "$DB_PASS" -db-name $DB_NAME
+EnvironmentFile=$APP_DIR/.env
+ExecStart=$APP_DIR/nexcore \
+    -port $WEB_PORT \
+    -db-host \$DB_HOST \
+    -db-port \$DB_PORT \
+    -db-user \$DB_USER \
+    -db-pass "\$DB_PASS" \
+    -db-name \$DB_NAME
 Restart=on-failure
 RestartSec=5s
 
@@ -143,13 +203,18 @@ RestartSec=5s
 WantedBy=multi-user.target
 EOF
 
+# 初始化管理员密码（修改 user.go 的 InitAdmin）
+# 这里通过环境变量传递
+export NCP_ADMIN_USER="$ADMIN_USER"
+export NCP_ADMIN_PASS="$ADMIN_PASS"
+
 # 启动服务
 systemctl daemon-reload
 systemctl enable nexcore
 systemctl start nexcore
 
 # 检查状态
-sleep 2
+sleep 3
 if systemctl is-active --quiet nexcore; then
     SERVER_IP=$(curl -s ifconfig.me || curl -s ip.sb || echo "YOUR_IP")
     
@@ -159,8 +224,8 @@ if systemctl is-active --quiet nexcore; then
     echo -e "${green}========================================${plain}"
     echo ""
     echo -e "访问地址: ${green}http://${SERVER_IP}:${WEB_PORT}${plain}"
-    echo -e "默认账号: ${green}admin${plain}"
-    echo -e "默认密码: ${green}admin123${plain}"
+    echo -e "管理员账号: ${green}${ADMIN_USER}${plain}"
+    echo -e "管理员密码: ${green}${ADMIN_PASS}${plain}"
     echo ""
     echo -e "管理命令:"
     echo "  启动: systemctl start nexcore"
@@ -170,5 +235,6 @@ if systemctl is-active --quiet nexcore; then
     echo ""
 else
     echo -e "${red}安装失败，请查看日志: journalctl -u nexcore${plain}"
+    journalctl -u nexcore --no-pager -n 50
     exit 1
 fi
