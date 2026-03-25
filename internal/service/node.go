@@ -82,14 +82,9 @@ func (s *NodeService) Install(id uint) error {
 	}
 	defer sshClient.Close()
 
-	// 安装x-ui的命令
+	// 使用 NexCoreProxy Agent 安装脚本
 	installCmd := fmt.Sprintf(
-		`bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/main/install.sh) << 'EOF'
-y
-%s
-%s
-54321
-EOF`,
+		`bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -u %s -pass '%s'`,
 		node.Username, node.Password,
 	)
 
@@ -99,6 +94,7 @@ EOF`,
 	}
 
 	node.Status = "online"
+	node.Port = 54321
 	model.GetDB().Save(node)
 	return nil
 }
