@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -82,10 +83,19 @@ func (s *NodeService) Install(id uint) error {
 	}
 	defer sshClient.Close()
 
+	// 生成随机端口（10000-65000）
+	port := 10000 + rand.Intn(55000)
+	
+	// 生成随机用户名（8位）
+	user := generateRandomString(8)
+	
+	// 生成随机密码（16位）
+	password := generateRandomString(16)
+
 	// 使用 NexCoreProxy Agent 安装脚本
 	installCmd := fmt.Sprintf(
-		`bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -u %s -pass '%s'`,
-		node.Username, node.Password,
+		`bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -p %d -u %s -pass '%s'`,
+		port, user, password,
 	)
 
 	output, err := s.sshRun(sshClient, installCmd)
@@ -93,10 +103,24 @@ func (s *NodeService) Install(id uint) error {
 		return fmt.Errorf("安装失败: %v, 输出: %s", err, output)
 	}
 
+	// 更新节点信息
 	node.Status = "online"
-	node.Port = 54321
+	node.Port = port
+	node.Username = user
+	node.Password = password
 	model.GetDB().Save(node)
+	
 	return nil
+}
+
+// generateRandomString 生成随机字符串
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }
 
 // sshConnect SSH连接
