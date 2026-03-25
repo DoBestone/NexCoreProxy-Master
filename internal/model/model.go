@@ -12,8 +12,21 @@ var db *gorm.DB
 // InitDB 初始化数据库
 func InitDB(dsn string) error {
 	var err error
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	return err
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		SkipDefaultTransaction: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+
+	return nil
 }
 
 // GetDB 获取数据库连接
@@ -94,33 +107,33 @@ type UserNode struct {
 
 // Package 套餐模型
 type Package struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	Name        string    `json:"name" gorm:"size:100;not null"`
-	Protocol    string    `json:"protocol" gorm:"size:20"`       // vmess, vless, trojan, all
-	Traffic     int64     `json:"traffic"`                       // 流量(字节), 0=无限
-	Duration    int       `json:"duration"`                      // 时长(天), 0=永久
-	Price       float64   `json:"price"`                         // 价格
-	Nodes       int       `json:"nodes"`                         // 可用节点数, 0=无限
-	Remark      string    `json:"remark" gorm:"size:255"`
-	Sort        int       `json:"sort" gorm:"default:0"`
-	Enable      bool      `json:"enable" gorm:"default:true"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	Name      string    `json:"name" gorm:"size:100;not null"`
+	Protocol  string    `json:"protocol" gorm:"size:20"` // vmess, vless, trojan, all
+	Traffic   int64     `json:"traffic"`                 // 流量(字节), 0=无限
+	Duration  int       `json:"duration"`                // 时长(天), 0=永久
+	Price     float64   `json:"price"`                   // 价格
+	Nodes     int       `json:"nodes"`                   // 可用节点数, 0=无限
+	Remark    string    `json:"remark" gorm:"size:255"`
+	Sort      int       `json:"sort" gorm:"default:0"`
+	Enable    bool      `json:"enable" gorm:"default:true"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Order 订单模型
 type Order struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	OrderNo     string    `json:"orderNo" gorm:"uniqueIndex;size:32"`
-	UserID      uint      `json:"userId" gorm:"index"`
-	PackageID   uint      `json:"packageId"`
-	PackageName string    `json:"packageName" gorm:"size:100"`
-	Amount      float64   `json:"amount"`              // 金额
-	Status      string    `json:"status" gorm:"size:20;default:'pending'"` // pending, paid, cancelled, refunded
-	PayMethod   string    `json:"payMethod" gorm:"size:20"` // alipay, wechat, balance
+	ID          uint       `json:"id" gorm:"primaryKey"`
+	OrderNo     string     `json:"orderNo" gorm:"uniqueIndex;size:32"`
+	UserID      uint       `json:"userId" gorm:"index"`
+	PackageID   uint       `json:"packageId"`
+	PackageName string     `json:"packageName" gorm:"size:100"`
+	Amount      float64    `json:"amount"`                                  // 金额
+	Status      string     `json:"status" gorm:"size:20;default:'pending'"` // pending, paid, cancelled, refunded
+	PayMethod   string     `json:"payMethod" gorm:"size:20"`                // alipay, wechat, balance
 	PaidAt      *time.Time `json:"paidAt"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
 // Ticket 工单模型
@@ -130,7 +143,7 @@ type Ticket struct {
 	Subject   string    `json:"subject" gorm:"size:200"`
 	Content   string    `json:"content" gorm:"type:text"`
 	Status    string    `json:"status" gorm:"size:20;default:'open'"` // open, closed
-	Priority  int       `json:"priority" gorm:"default:0"`           // 0=普通, 1=紧急
+	Priority  int       `json:"priority" gorm:"default:0"`            // 0=普通, 1=紧急
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }

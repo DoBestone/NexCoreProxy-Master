@@ -85,10 +85,10 @@ func (s *NodeService) Install(id uint) error {
 
 	// 生成随机端口（10000-65000）
 	port := 10000 + rand.Intn(55000)
-	
+
 	// 生成随机用户名（8位）
 	user := generateRandomString(8)
-	
+
 	// 生成随机密码（16位）
 	password := generateRandomString(16)
 
@@ -109,7 +109,7 @@ func (s *NodeService) Install(id uint) error {
 	node.Username = user
 	node.Password = password
 	model.GetDB().Save(node)
-	
+
 	return nil
 }
 
@@ -278,12 +278,12 @@ func (s *NodeService) getClient(nodeID uint) (*NodeClient, error) {
 
 // Subscription 订阅信息
 type Subscription struct {
-	UserID      uint   `json:"userId"`
-	Username    string `json:"username"`
-	TrafficUsed int64  `json:"trafficUsed"`
-	TrafficLimit int64 `json:"trafficLimit"`
-	ExpireAt    string `json:"expireAt"`
-	Nodes       []NodeConfig `json:"nodes"`
+	UserID       uint         `json:"userId"`
+	Username     string       `json:"username"`
+	TrafficUsed  int64        `json:"trafficUsed"`
+	TrafficLimit int64        `json:"trafficLimit"`
+	ExpireAt     string       `json:"expireAt"`
+	Nodes        []NodeConfig `json:"nodes"`
 }
 
 // NodeConfig 节点配置

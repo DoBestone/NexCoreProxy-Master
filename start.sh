@@ -14,15 +14,17 @@ mkdir -p data
 
 # 加载环境变量
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
 # 默认值
-DB_HOST=${DB_HOST:-127.0.0.1}
-DB_PORT=${DB_PORT:-3307}
+DB_HOST=${DB_HOST:-localhost}
+DB_PORT=${DB_PORT:-3306}
 DB_USER=${DB_USER:-root}
 DB_PASS=${DB_PASS:-}
-DB_NAME=${DB_NAME:-nexcore}
+DB_NAME=${DB_NAME:-nexcore_proxy}
 PORT=${PORT:-8082}
 
 # 检查是否已经运行

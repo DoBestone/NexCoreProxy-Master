@@ -18,9 +18,9 @@ type Server struct {
 // NewServer 创建Web服务器
 func NewServer(port int, services *service.Services) *Server {
 	gin.SetMode(gin.ReleaseMode)
-	
+
 	engine := gin.Default()
-	
+
 	srv := &Server{
 		port:    port,
 		engine:  engine,

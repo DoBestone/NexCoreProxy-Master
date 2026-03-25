@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"nexcoreproxy-master/internal/model"
 	"golang.org/x/crypto/bcrypt"
+	"nexcoreproxy-master/internal/model"
 )
 
 // JWT密钥 (生产环境应该从配置读取)
@@ -133,7 +133,7 @@ func (s *UserService) InitAdmin() error {
 	// 从环境变量读取管理员账号密码
 	username := os.Getenv("NCP_ADMIN_USER")
 	password := os.Getenv("NCP_ADMIN_PASS")
-	
+
 	if username == "" {
 		username = "admin"
 	}

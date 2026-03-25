@@ -37,19 +37,25 @@ func main() {
 		return
 	}
 
+	log.Println("Starting NexCoreProxy Master...")
+
 	// MySQL DSN
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		dbUser, dbPass, dbHost, dbPort, dbName)
+
+	log.Printf("Connecting to database: %s@%s:%s/%s", dbUser, dbHost, dbPort, dbName)
 
 	// 初始化数据库
 	if err := model.InitDB(dsn); err != nil {
 		log.Fatal("初始化数据库失败:", err)
 	}
+	log.Println("Database connected")
 
 	// 自动迁移
 	if err := model.AutoMigrate(); err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
+	log.Println("Database migrated")
 
 	// 初始化服务
 	services := service.NewServices()

@@ -109,8 +109,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { ref, onMounted, h } from 'vue'
+import { message, Modal } from 'ant-design-vue'
 import {
   PlusOutlined,
   ApiOutlined,
@@ -274,6 +274,18 @@ const doInstallNode = async (node) => {
     const res = await installNodeApi(node.id)
     if (res.success) {
       message.success('安装成功')
+      // 显示生成的信息
+      if (res.obj) {
+        Modal.success({
+          title: '节点安装成功',
+          content: h('div', {}, [
+            h('p', {}, `IP: ${res.obj.ip}`),
+            h('p', {}, `端口: ${res.obj.port}`),
+            h('p', {}, `用户名: ${res.obj.username}`),
+            h('p', {}, `密码: ${res.obj.password}`),
+          ]),
+        })
+      }
       fetchNodes()
     } else {
       message.error(res.msg || '安装失败')

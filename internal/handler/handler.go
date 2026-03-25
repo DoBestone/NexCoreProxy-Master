@@ -790,12 +790,35 @@ func (h *Handler) CloseTicket(c *gin.Context) {
 func (h *Handler) InstallNode(c *gin.Context) {
 	id := c.Param("id")
 
+	node, err := h.node.GetByID(parseUint(id))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "节点不存在"})
+		return
+	}
+
+	// 保存原始信息用于返回
+	originalPort := node.Port
+	originalUser := node.Username
+	originalPass := node.Password
+
 	if err := h.node.Install(parseUint(id)); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "安装失败: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "安装成功"})
+	// 重新获取更新后的节点信息
+	node, _ = h.node.GetByID(parseUint(id))
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"msg":     "安装成功",
+		"obj": gin.H{
+			"ip":       node.IP,
+			"port":     node.Port,
+			"username": node.Username,
+			"password": node.Password,
+		},
+	})
 }
 
 // GetSubscription 获取订阅链接（公开，通过token验证）
