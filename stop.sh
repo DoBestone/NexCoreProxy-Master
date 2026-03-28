@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# NexCore代理主机 停止脚本
+# NexCoreProxy Host 停止脚本
 
-APP_NAME="NexCore代理主机"
+APP_NAME="NexCoreProxy Host"
 APP_DIR="/root/projects/NexCoreProxy-Master"
 PID_FILE="$APP_DIR/data/nexcore.pid"
 

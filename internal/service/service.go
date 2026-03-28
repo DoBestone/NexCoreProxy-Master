@@ -8,17 +8,21 @@ import (
 
 // Services 服务集合
 type Services struct {
-	Node *NodeService
-	User *UserService
-	Cron *cron.Cron
+	Node  *NodeService
+	User  *UserService
+	Email *EmailService
+	Agent *AgentManager
+	Cron  *cron.Cron
 }
 
 // NewServices 创建服务集合
 func NewServices() *Services {
 	s := &Services{
-		Node: NewNodeService(),
-		User: NewUserService(),
-		Cron: cron.New(cron.WithLocation(time.UTC)),
+		Node:  NewNodeService(),
+		User:  NewUserService(),
+		Email: NewEmailService(),
+		Agent: NewAgentManager(),
+		Cron:  cron.New(cron.WithLocation(time.UTC)),
 	}
 	return s
 }

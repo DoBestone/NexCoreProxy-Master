@@ -3,11 +3,26 @@ import AdminLayout from '@/layouts/AdminLayout.vue'
 import UserLayout from '@/layouts/UserLayout.vue'
 
 const routes = [
+  // 管理端登录
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/Login.vue'),
-    meta: { title: '登录', requiresAuth: false }
+    path: '/admin/login',
+    name: 'AdminLogin',
+    component: () => import('@/views/admin/AdminLogin.vue'),
+    meta: { title: '管理端登录', requiresAuth: false, layout: 'admin' }
+  },
+  // 用户端登录
+  {
+    path: '/user/login',
+    name: 'UserLogin',
+    component: () => import('@/views/user/UserLogin.vue'),
+    meta: { title: '用户登录', requiresAuth: false, layout: 'user' }
+  },
+  // 注册页面
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/Register.vue'),
+    meta: { title: '注册', requiresAuth: false, layout: 'user' }
   },
   // 管理端路由
   {
@@ -63,6 +78,18 @@ const routes = [
         name: 'Settings',
         component: () => import('@/views/admin/Settings.vue'),
         meta: { title: '系统设置', icon: 'SettingOutlined' }
+      },
+      {
+        path: 'announcements',
+        name: 'Announcements',
+        component: () => import('@/views/admin/Announcements.vue'),
+        meta: { title: '公告管理', icon: 'NotificationOutlined' }
+      },
+      {
+        path: 'email-settings',
+        name: 'EmailSettings',
+        component: () => import('@/views/admin/EmailSettings.vue'),
+        meta: { title: '邮件配置', icon: 'MailOutlined' }
       }
     ]
   },
@@ -102,13 +129,24 @@ const routes = [
         name: 'MyTickets',
         component: () => import('@/views/user/MyTickets.vue'),
         meta: { title: '我的工单', icon: 'MessageOutlined' }
+      },
+      {
+        path: 'settings',
+        name: 'UserSettings',
+        component: () => import('@/views/user/Settings.vue'),
+        meta: { title: '账户设置', icon: 'SettingOutlined' }
       }
     ]
   },
   // 默认重定向
   {
     path: '/',
-    redirect: '/admin/dashboard'
+    redirect: '/user/login'
+  },
+  // 兼容旧登录页
+  {
+    path: '/login',
+    redirect: '/admin/login'
   }
 ]
 
@@ -120,12 +158,26 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - NexCore代理主机` : 'NexCore代理主机'
   
-  const token = localStorage.getItem('token')
-  if (to.meta.requiresAuth !== false && !token) {
-    next('/login')
-  } else {
-    next()
+  // 根据路由判断使用哪个 token
+  const isAdminRoute = to.path.startsWith('/admin')
+  const isUserRoute = to.path.startsWith('/user')
+  
+  const adminToken = localStorage.getItem('admin_token')
+  const userToken = localStorage.getItem('user_token')
+  
+  // 管理端路由需要管理端 token
+  if (isAdminRoute && to.meta.requiresAuth !== false && !adminToken) {
+    next('/admin/login')
+    return
   }
+  
+  // 用户端路由需要用户端 token
+  if (isUserRoute && to.meta.requiresAuth !== false && !userToken) {
+    next('/user/login')
+    return
+  }
+  
+  next()
 })
 
 export default router

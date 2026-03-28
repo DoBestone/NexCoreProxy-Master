@@ -95,6 +95,15 @@ func (s *UserService) Create(username, password, email, role string) error {
 	return model.GetDB().Create(user).Error
 }
 
+// HashPassword 加密密码
+func (s *UserService) HashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedPassword), nil
+}
+
 // GetAll 获取所有用户
 func (s *UserService) GetAll() ([]model.User, error) {
 	var users []model.User

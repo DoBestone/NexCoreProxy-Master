@@ -1,73 +1,146 @@
 <template>
   <div class="packages-page">
-    <a-card title="套餐管理">
-      <template #extra>
-        <a-button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          添加套餐
-        </a-button>
-      </template>
-      <a-table :columns="columns" :dataSource="packages" :loading="loading" rowKey="id">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'traffic'">
-            {{ record.traffic ? formatTraffic(record.traffic) : '无限制' }}
-          </template>
-          <template v-if="column.key === 'duration'">
-            {{ record.duration ? record.duration + '天' : '永久' }}
-          </template>
-          <template v-if="column.key === 'price'">
-            ¥{{ record.price }}
-          </template>
-          <template v-if="column.key === 'enable'">
-            <a-switch v-model:checked="record.enable" @change="toggleEnable(record)" />
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="editPackage(record)">编辑</a-button>
-              <a-popconfirm title="确定删除?" @confirm="deletePackageRecord(record.id)">
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </a-space>
-          </template>
-        </template>
-      </a-table>
-    </a-card>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">
+          <AppstoreOutlined class="title-icon" />
+          套餐管理
+        </h1>
+        <p class="page-desc">配置销售套餐，设置流量、时长和价格</p>
+      </div>
+      <a-button type="primary" size="large" @click="showAddModal">
+        <template #icon><PlusOutlined /></template>
+        添加套餐
+      </a-button>
+    </div>
+    
+    <!-- 套餐列表 -->
+    <div class="packages-grid">
+      <div 
+        v-for="pkg in packages" 
+        :key="pkg.id" 
+        class="package-card"
+        :class="{ disabled: !pkg.enable }"
+      >
+        <div class="package-header">
+          <span class="package-name">{{ pkg.name }}</span>
+          <span :class="['protocol-badge', pkg.protocol]">{{ pkg.protocol?.toUpperCase() || 'ALL' }}</span>
+        </div>
+        
+        <div class="package-price">
+          <span class="price-symbol">¥</span>
+          <span class="price-value">{{ pkg.price }}</span>
+        </div>
+        
+        <div class="package-features">
+          <div class="feature-item">
+            <DatabaseOutlined class="feature-icon" />
+            <span>流量: {{ pkg.traffic ? formatTraffic(pkg.traffic) : '无限制' }}</span>
+          </div>
+          <div class="feature-item">
+            <ClockCircleOutlined class="feature-icon" />
+            <span>有效期: {{ pkg.duration ? pkg.duration + '天' : '永久' }}</span>
+          </div>
+          <div class="feature-item">
+            <CloudServerOutlined class="feature-icon" />
+            <span>节点数: {{ pkg.nodes || '不限' }}</span>
+          </div>
+        </div>
+        
+        <div class="package-actions">
+          <a-switch 
+            v-model:checked="pkg.enable" 
+            @change="toggleEnable(pkg)"
+            size="small"
+          />
+          <div class="action-btns">
+            <button class="action-btn" @click="editPackage(pkg)">
+              <EditOutlined />
+            </button>
+            <a-popconfirm title="确定删除此套餐?" @confirm="deletePackageRecord(pkg.id)">
+              <button class="action-btn danger">
+                <DeleteOutlined />
+              </button>
+            </a-popconfirm>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 空状态 -->
+      <div v-if="!loading && packages.length === 0" class="empty-card" @click="showAddModal">
+        <PlusOutlined class="add-icon" />
+        <span>添加第一个套餐</span>
+      </div>
+    </div>
+    
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-container">
+      <a-spin size="large" />
+    </div>
 
     <!-- 添加/编辑套餐弹窗 -->
-    <a-modal v-model:open="modalVisible" :title="editingPackage ? '编辑套餐' : '添加套餐'" @ok="handleSubmit" :confirmLoading="submitting">
-      <a-form :model="form" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }">
-        <a-form-item label="套餐名称" required>
-          <a-input v-model:value="form.name" placeholder="如: 基础版" />
-        </a-form-item>
-        <a-form-item label="协议类型">
-          <a-select v-model:value="form.protocol" style="width: 100%">
-            <a-select-option value="all">全部</a-select-option>
-            <a-select-option value="vmess">VMess</a-select-option>
-            <a-select-option value="vless">VLESS</a-select-option>
-            <a-select-option value="trojan">Trojan</a-select-option>
-            <a-select-option value="shadowsocks">Shadowsocks</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="数据量">
-          <a-input-number v-model:value="form.trafficGB" :min="0" style="width: 100%" addon-after="GB" />
-          <span style="color: #999; font-size: 12px">0 表示无限制</span>
-        </a-form-item>
-        <a-form-item label="有效期">
-          <a-input-number v-model:value="form.duration" :min="0" style="width: 100%" addon-after="天" />
-          <span style="color: #999; font-size: 12px">0 表示永久</span>
-        </a-form-item>
-        <a-form-item label="价格" required>
-          <a-input-number v-model:value="form.price" :min="0" :precision="2" style="width: 100%" addon-before="¥" />
-        </a-form-item>
-        <a-form-item label="服务数量">
-          <a-input-number v-model:value="form.nodes" :min="0" style="width: 100%" />
-          <span style="color: #999; font-size: 12px">0 表示不限制</span>
-        </a-form-item>
-        <a-form-item label="排序">
-          <a-input-number v-model:value="form.sort" :min="0" style="width: 100%" />
-        </a-form-item>
+    <a-modal 
+      v-model:open="modalVisible" 
+      :title="editingPackage ? '编辑套餐' : '添加套餐'" 
+      @ok="handleSubmit" 
+      :confirmLoading="submitting"
+      :width="520"
+    >
+      <a-form :model="form" layout="vertical" class="package-form">
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="套餐名称" required>
+              <a-input v-model:value="form.name" placeholder="如: 基础版" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="协议类型">
+              <a-select v-model:value="form.protocol" style="width: 100%">
+                <a-select-option value="all">全部</a-select-option>
+                <a-select-option value="vmess">VMess</a-select-option>
+                <a-select-option value="vless">VLESS</a-select-option>
+                <a-select-option value="trojan">Trojan</a-select-option>
+                <a-select-option value="shadowsocks">Shadowsocks</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="数据量">
+              <a-input-number v-model:value="form.trafficGB" :min="0" style="width: 100%" addon-after="GB" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="有效期">
+              <a-input-number v-model:value="form.duration" :min="0" style="width: 100%" addon-after="天" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="价格" required>
+              <a-input-number v-model:value="form.price" :min="0" :precision="2" style="width: 100%" addon-before="¥" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="服务数量">
+              <a-input-number v-model:value="form.nodes" :min="0" style="width: 100%" />
+              <span class="form-hint">0 表示不限制</span>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="排序">
+              <a-input-number v-model:value="form.sort" :min="0" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
         <a-form-item label="备注">
-          <a-textarea v-model:value="form.remark" :rows="2" />
+          <a-textarea v-model:value="form.remark" :rows="2" placeholder="套餐说明" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -77,7 +150,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { 
+  PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined,
+  DatabaseOutlined, ClockCircleOutlined, CloudServerOutlined
+} from '@ant-design/icons-vue'
 import { getPackages, addPackage, updatePackage, deletePackage } from '@/api'
 
 const loading = ref(false)
@@ -96,17 +172,6 @@ const form = ref({
   sort: 0,
   remark: ''
 })
-
-const columns = [
-  { title: '名称', dataIndex: 'name', key: 'name' },
-  { title: '协议', dataIndex: 'protocol', key: 'protocol' },
-  { title: '数据量', key: 'traffic' },
-  { title: '有效期', key: 'duration' },
-  { title: '价格', key: 'price' },
-  { title: '服务数', dataIndex: 'nodes', key: 'nodes' },
-  { title: '启用', key: 'enable' },
-  { title: '操作', key: 'action', width: 120 }
-]
 
 const formatTraffic = (bytes) => {
   if (!bytes) return '0 B'
@@ -189,3 +254,226 @@ onMounted(() => {
   fetchPackages()
 })
 </script>
+
+<style scoped>
+.packages-page {
+  animation: fadeIn 0.3s ease;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #262626;
+  margin: 0;
+}
+
+.title-icon {
+  color: #1677ff;
+  font-size: 24px;
+}
+
+.page-desc {
+  color: #8c8c8c;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+/* 套餐网格 */
+.packages-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+/* 套餐卡片 */
+.package-card {
+  background: white;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.package-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.package-card.disabled {
+  opacity: 0.6;
+}
+
+.package-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.package-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.protocol-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f5f5f5;
+  color: #8c8c8c;
+}
+
+.protocol-badge.all { background: #e6f4ff; color: #1677ff; }
+.protocol-badge.vmess { background: #f9f0ff; color: #722ed1; }
+.protocol-badge.vless { background: #fff7e6; color: #d46b08; }
+.protocol-badge.trojan { background: #f6ffed; color: #389e0d; }
+.protocol-badge.shadowsocks { background: #e6fffb; color: #08979c; }
+
+.package-price {
+  margin-bottom: 20px;
+}
+
+.price-symbol {
+  font-size: 18px;
+  color: #1677ff;
+  font-weight: 500;
+}
+
+.price-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #1677ff;
+}
+
+.package-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #595959;
+}
+
+.feature-icon {
+  color: #8c8c8c;
+}
+
+.package-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.action-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #595959;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.action-btn.danger:hover {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+/* 空状态卡片 */
+.empty-card {
+  background: white;
+  border-radius: 14px;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 2px dashed #d9d9d9;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 240px;
+}
+
+.empty-card:hover {
+  border-color: #1677ff;
+  background: #f0f9ff;
+}
+
+.empty-card .add-icon {
+  font-size: 32px;
+  color: #bfbfbf;
+}
+
+.empty-card span {
+  color: #8c8c8c;
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 48px;
+}
+
+/* 表单提示 */
+.form-hint {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .packages-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>

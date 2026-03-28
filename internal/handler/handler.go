@@ -1,27 +1,38 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 	"nexcoreproxy-master/internal/model"
 	"nexcoreproxy-master/internal/service"
 )
 
 // Handler API处理器
 type Handler struct {
-	node *service.NodeService
-	user *service.UserService
+	node  *service.NodeService
+	user  *service.UserService
+	email *service.EmailService
+	agent *service.AgentManager
 }
 
 // NewHandler 创建处理器
 func NewHandler(services *service.Services) *Handler {
 	return &Handler{
-		node: services.Node,
-		user: services.User,
+		node:  services.Node,
+		user:  services.User,
+		email: services.Email,
+		agent: services.Agent,
 	}
 }
 
@@ -37,14 +48,30 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	{
 		// 认证
 		api.POST("/login", h.Login)
+		api.POST("/register", h.Register)  // 用户注册
 		api.POST("/logout", h.Logout)
 		api.GET("/userinfo", h.GetUserInfo)
 
 		// 公开接口
-		api.GET("/packages", h.GetPackages) // 套餐列表（公开）
+		api.GET("/packages", h.GetPackages)       // 套餐列表（公开）
+		api.GET("/announcements", h.GetAnnouncements) // 公告列表（公开）
+		api.GET("/turnstile-config", h.GetTurnstileConfig) // Turnstile配置（公开）
 
 		// 订阅链接（公开，通过token验证）
 		api.GET("/sub/:token", h.GetSubscription)
+
+		// Agent WebSocket 连接
+		api.GET("/agent/ws", h.AgentWebSocket)
+
+		// x-ui 面板反向代理 (通过密钥访问)
+		panel := api.Group("/panel/:agentKey")
+		{
+			panel.GET("/*path", h.PanelProxy)
+			panel.POST("/*path", h.PanelProxy)
+			panel.PUT("/*path", h.PanelProxy)
+			panel.DELETE("/*path", h.PanelProxy)
+			panel.PATCH("/*path", h.PanelProxy)
+		}
 
 		// 需要认证的路由
 		auth := api.Group("")
@@ -74,9 +101,17 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.POST("/nodes/:id/sync", h.SyncNode)
 				admin.POST("/nodes/:id/install", h.InstallNode)
 				admin.POST("/nodes/:id/restart", h.RestartNodeXray)
+				admin.POST("/nodes/:id/reset-credentials", h.ResetNodeCredentials)
+				admin.POST("/nodes/:id/check-update", h.CheckNodeUpdate)
+				admin.POST("/nodes/:id/update-agent", h.UpdateNodeAgent)
 				admin.GET("/nodes/:id/inbounds", h.GetNodeInbounds)
 				admin.POST("/nodes/:id/inbounds", h.AddNodeInbound)
 				admin.DELETE("/nodes/:id/inbounds/:inboundId", h.DeleteNodeInbound)
+				admin.POST("/nodes/:id/inbounds/:inboundId/toggle", h.ToggleNodeInbound)
+				admin.POST("/nodes/:id/ssh-status", h.SSHNodeStatus)
+				admin.POST("/nodes/:id/ssh-restart-xray", h.SSHRestartXray)
+				admin.GET("/nodes/:id/api-token", h.GetNodeAPIToken)
+				admin.POST("/nodes/:id/api-token", h.GenNodeAPIToken)
 
 				// 套餐管理
 				admin.POST("/packages", h.AddPackage)
@@ -97,6 +132,17 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.POST("/templates", h.AddTemplate)
 				admin.DELETE("/templates/:id", h.DeleteTemplate)
 
+				// 公告管理
+				admin.GET("/admin/announcements", h.GetAdminAnnouncements)
+				admin.POST("/admin/announcements", h.AddAnnouncement)
+				admin.PUT("/admin/announcements/:id", h.UpdateAnnouncement)
+				admin.DELETE("/admin/announcements/:id", h.DeleteAnnouncement)
+
+				// 邮件配置
+				admin.GET("/admin/email-config", h.GetEmailConfig)
+				admin.PUT("/admin/email-config", h.UpdateEmailConfig)
+				admin.POST("/admin/email-test", h.TestEmail)
+
 				// 统计
 				admin.GET("/stats/overview", h.GetStatsOverview)
 			}
@@ -115,6 +161,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 			auth.GET("/my/tickets", h.GetMyTickets)
 			auth.POST("/tickets", h.CreateTicket)
 			auth.GET("/tickets/:id", h.GetTicketDetail)
+			auth.POST("/my/tickets/:id/reply", h.UserReplyTicket)
 		}
 	}
 }
@@ -176,13 +223,23 @@ func (h *Handler) getCurrentUserID(c *gin.Context) uint {
 // Login 登录
 func (h *Handler) Login(c *gin.Context) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+		TurnstileToken string `json:"turnstileToken"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
+	}
+
+	// 验证 Turnstile
+	secretKey := os.Getenv("TURNSTILE_SECRET_KEY")
+	if secretKey != "" && req.TurnstileToken != "" {
+		if !h.verifyTurnstile(req.TurnstileToken, secretKey, c.ClientIP()) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "人机验证失败，请重试"})
+			return
+		}
 	}
 
 	user, err := h.user.Authenticate(req.Username, req.Password)
@@ -210,6 +267,36 @@ func (h *Handler) Login(c *gin.Context) {
 			"token":    token,
 		},
 	})
+}
+
+// verifyTurnstile 验证 Cloudflare Turnstile
+func (h *Handler) verifyTurnstile(token, secretKey, clientIP string) bool {
+	apiURL := "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+	
+	data := url.Values{}
+	data.Set("secret", secretKey)
+	data.Set("response", token)
+	data.Set("remoteip", clientIP)
+	
+	resp, err := http.PostForm(apiURL, data)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false
+	}
+	
+	var result struct {
+		Success bool `json:"success"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return false
+	}
+	
+	return result.Success
 }
 
 // Logout 登出
@@ -255,6 +342,9 @@ func (h *Handler) GetNodes(c *gin.Context) {
 		return
 	}
 
+	// 返回完整密码，方便确认
+	// 密码已加密存储，管理端可见
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": nodes})
 }
 
@@ -278,6 +368,7 @@ func (h *Handler) AddNode(c *gin.Context) {
 		return
 	}
 
+	// 返回完整节点信息
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": node})
 }
 
@@ -296,15 +387,51 @@ func (h *Handler) GetNode(c *gin.Context) {
 // UpdateNode 更新节点
 func (h *Handler) UpdateNode(c *gin.Context) {
 	id := c.Param("id")
-	var node model.Node
-	if err := c.ShouldBindJSON(&node); err != nil {
+	var req struct {
+		Name        string `json:"name"`
+		IP          string `json:"ip"`
+		Port        int    `json:"port"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		SSHPort     int    `json:"sshPort"`
+		SSHUser     string `json:"sshUser"`
+		SSHPassword string `json:"sshPassword"`
+		Remark      string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
 	}
 
-	node.ID = parseUint(id)
+	nodeID := parseUint(id)
 
-	if err := h.node.Update(&node); err != nil {
+	// 获取现有节点
+	var existingNode model.Node
+	if err := model.GetDB().First(&existingNode, nodeID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "节点不存在"})
+		return
+	}
+
+	// 构建更新数据
+	updates := map[string]interface{}{
+		"name":      req.Name,
+		"ip":        req.IP,
+		"port":      req.Port,
+		"username":  req.Username,
+		"ssh_port":  req.SSHPort,
+		"ssh_user":  req.SSHUser,
+		"remark":    req.Remark,
+	}
+
+	// 只有提供了密码才更新
+	if req.Password != "" {
+		updates["password"] = req.Password
+	}
+	if req.SSHPassword != "" {
+		updates["ssh_password"] = req.SSHPassword
+	}
+
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "更新节点失败"})
 		return
 	}
@@ -391,6 +518,75 @@ func (h *Handler) DeleteNodeInbound(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ToggleNodeInbound 启用/禁用入站
+func (h *Handler) ToggleNodeInbound(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+	inboundId := parseInt(c.Param("inboundId"))
+
+	var req struct {
+		Enable bool `json:"enable"`
+	}
+	c.ShouldBindJSON(&req)
+
+	if err := h.node.SSHEnableInbound(id, inboundId, req.Enable); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "操作失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// SSHNodeStatus 通过SSH获取节点状态
+func (h *Handler) SSHNodeStatus(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	result, err := h.node.SSHGetStatus(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": result})
+}
+
+// SSHRestartXray 通过SSH重启Xray
+func (h *Handler) SSHRestartXray(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	if err := h.node.SSHRestartXray(id); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "重启失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// GetNodeAPIToken 获取节点API Token
+func (h *Handler) GetNodeAPIToken(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	token, err := h.node.GetAPIToken(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": map[string]string{"token": token}})
+}
+
+// GenNodeAPIToken 生成新的API Token
+func (h *Handler) GenNodeAPIToken(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	token, err := h.node.GenAPIToken(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": map[string]string{"token": token}})
 }
 
 // RestartNodeXray 重启节点 Xray
@@ -482,19 +678,38 @@ func (h *Handler) GetStatsOverview(c *gin.Context) {
 func (h *Handler) GetUsers(c *gin.Context) {
 	var users []model.User
 	model.GetDB().Find(&users)
+
+	// 清空密码字段（bcrypt哈希，不需要返回）
+	for i := range users {
+		users[i].Password = ""
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": users})
 }
 
 // AddUser 添加用户
 func (h *Handler) AddUser(c *gin.Context) {
-	var user model.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
+		Role     string `json:"role"`
+		Balance  float64 `json:"balance"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
 	}
 
-	if err := h.user.Create(user.Username, user.Password, user.Email, user.Role); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "添加用户失败"})
+	if req.Password == "" {
+		req.Password = "123456" // 默认密码
+	}
+	if req.Role == "" {
+		req.Role = "user"
+	}
+
+	if err := h.user.Create(req.Username, req.Password, req.Email, req.Role); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "添加用户失败: " + err.Error()})
 		return
 	}
 
@@ -504,14 +719,52 @@ func (h *Handler) AddUser(c *gin.Context) {
 // UpdateUser 更新用户
 func (h *Handler) UpdateUser(c *gin.Context) {
 	id := c.Param("id")
-	var user model.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var req struct {
+		Username string  `json:"username"`
+		Password string  `json:"password"`
+		Email    string  `json:"email"`
+		Role     string  `json:"role"`
+		Balance  float64 `json:"balance"`
+		TrafficLimit int64 `json:"trafficLimit"`
+		Enable   bool    `json:"enable"`
+		Remark   string  `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
 	}
 
-	user.ID = parseUint(id)
-	if err := h.user.Update(&user); err != nil {
+	userID := parseUint(id)
+
+	// 获取现有用户
+	var existingUser model.User
+	if err := model.GetDB().First(&existingUser, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "用户不存在"})
+		return
+	}
+
+	// 构建更新数据
+	updates := map[string]interface{}{
+		"username": req.Username,
+		"email":    req.Email,
+		"role":     req.Role,
+		"balance":  req.Balance,
+		"traffic_limit": req.TrafficLimit,
+		"enable":   req.Enable,
+		"remark":   req.Remark,
+	}
+
+	// 只有提供了密码才更新
+	if req.Password != "" {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "密码加密失败"})
+			return
+		}
+		updates["password"] = string(hashedPassword)
+	}
+
+	if err := model.GetDB().Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "更新用户失败"})
 		return
 	}
@@ -786,6 +1039,49 @@ func (h *Handler) CloseTicket(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// UserReplyTicket 用户回复工单
+func (h *Handler) UserReplyTicket(c *gin.Context) {
+	userID := c.GetUint("userID")
+	ticketID := c.Param("id")
+
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+
+	// 检查工单是否属于当前用户
+	var ticket model.Ticket
+	if err := model.GetDB().First(&ticket, parseUint(ticketID)).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "工单不存在"})
+		return
+	}
+	if ticket.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "msg": "无权操作"})
+		return
+	}
+
+	// 创建回复
+	reply := model.TicketReply{
+		TicketID: ticket.ID,
+		UserID:   userID,
+		Content:  req.Content,
+	}
+	if err := model.GetDB().Create(&reply).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "回复失败"})
+		return
+	}
+
+	// 如果工单已关闭，重新打开
+	if ticket.Status == "closed" {
+		model.GetDB().Model(&ticket).Update("status", "open")
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "回复成功"})
+}
+
 // InstallNode SSH安装节点
 func (h *Handler) InstallNode(c *gin.Context) {
 	id := c.Param("id")
@@ -795,11 +1091,6 @@ func (h *Handler) InstallNode(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "节点不存在"})
 		return
 	}
-
-	// 保存原始信息用于返回
-	originalPort := node.Port
-	originalUser := node.Username
-	originalPass := node.Password
 
 	if err := h.node.Install(parseUint(id)); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "安装失败: " + err.Error()})
@@ -897,4 +1188,443 @@ func parseInt(s string) int {
 		}
 	}
 	return n
+}
+
+// Register 用户注册
+func (h *Handler) Register(c *gin.Context) {
+	var req struct {
+		Username       string `json:"username" binding:"required,min=3,max=50"`
+		Password       string `json:"password" binding:"required,min=6"`
+		Email          string `json:"email"`
+		InviteCode     string `json:"inviteCode"`
+		TurnstileToken string `json:"turnstileToken"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+
+	// 验证 Turnstile
+	secretKey := os.Getenv("TURNSTILE_SECRET_KEY")
+	if secretKey != "" && req.TurnstileToken != "" {
+		if !h.verifyTurnstile(req.TurnstileToken, secretKey, c.ClientIP()) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "人机验证失败，请重试"})
+			return
+		}
+	}
+
+	db := model.GetDB()
+
+	// 检查用户名是否存在
+	var existUser model.User
+	if db.Where("username = ?", req.Username).First(&existUser).Error == nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "用户名已存在"})
+		return
+	}
+
+	// 检查邮箱是否已使用
+	if req.Email != "" {
+		if db.Where("email = ?", req.Email).First(&existUser).Error == nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "msg": "邮箱已被使用"})
+			return
+		}
+	}
+
+	// 密码加密
+	hashedPassword, err := h.user.HashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "密码加密失败"})
+		return
+	}
+
+	// 创建用户
+	user := model.User{
+		Username: req.Username,
+		Password: hashedPassword,
+		Email:    req.Email,
+		Role:     "user",
+		Enable:   true,
+	}
+
+	// 处理邀请码
+	if req.InviteCode != "" {
+		var inviter model.User
+		if db.Where("invite_code = ?", req.InviteCode).First(&inviter).Error == nil {
+			user.InvitedBy = inviter.ID
+			// 给邀请人奖励余额
+			db.Model(&inviter).Update("balance", gorm.Expr("balance + ?", 5.0))
+		}
+	}
+
+	if err := db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "注册失败"})
+		return
+	}
+
+	// 生成邀请码
+	inviteCode := fmt.Sprintf("NC%06d", user.ID)
+	db.Model(&user).Update("invite_code", inviteCode)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"msg":     "注册成功",
+		"obj": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+		},
+	})
+}
+
+// GetAnnouncements 获取公告列表（公开）
+func (h *Handler) GetAnnouncements(c *gin.Context) {
+	var announcements []model.Announcement
+	db := model.GetDB()
+
+	query := db.Where("enable = ?", true).Order("pinned DESC, created_at DESC")
+	if err := query.Find(&announcements).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取公告失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": announcements})
+}
+
+// GetAdminAnnouncements 管理员获取所有公告
+func (h *Handler) GetAdminAnnouncements(c *gin.Context) {
+	var announcements []model.Announcement
+	db := model.GetDB()
+
+	if err := db.Order("pinned DESC, created_at DESC").Find(&announcements).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取公告失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": announcements})
+}
+
+// AddAnnouncement 添加公告
+func (h *Handler) AddAnnouncement(c *gin.Context) {
+	var req struct {
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+		Type    string `json:"type"`
+		Pinned  bool   `json:"pinned"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+
+	if req.Type == "" {
+		req.Type = "info"
+	}
+
+	announcement := model.Announcement{
+		Title:   req.Title,
+		Content: req.Content,
+		Type:    req.Type,
+		Pinned:  req.Pinned,
+		Enable:  true,
+	}
+
+	if err := model.GetDB().Create(&announcement).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "添加失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": announcement})
+}
+
+// UpdateAnnouncement 更新公告
+func (h *Handler) UpdateAnnouncement(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	var req struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+		Type    string `json:"type"`
+		Pinned  bool   `json:"pinned"`
+		Enable  bool   `json:"enable"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+
+	db := model.GetDB()
+	updates := map[string]interface{}{}
+	if req.Title != "" {
+		updates["title"] = req.Title
+	}
+	if req.Content != "" {
+		updates["content"] = req.Content
+	}
+	if req.Type != "" {
+		updates["type"] = req.Type
+	}
+	updates["pinned"] = req.Pinned
+	updates["enable"] = req.Enable
+
+	if err := db.Model(&model.Announcement{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "更新失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "更新成功"})
+}
+
+// DeleteAnnouncement 删除公告
+func (h *Handler) DeleteAnnouncement(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	if err := model.GetDB().Delete(&model.Announcement{}, id).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "删除失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "删除成功"})
+}
+
+// GetEmailConfig 获取邮件配置
+func (h *Handler) GetEmailConfig(c *gin.Context) {
+	var config model.EmailConfig
+	db := model.GetDB()
+	
+	if err := db.First(&config).Error; err != nil {
+		// 返回空配置
+		c.JSON(http.StatusOK, gin.H{"success": true, "obj": nil})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": config})
+}
+
+// UpdateEmailConfig 更新邮件配置
+func (h *Handler) UpdateEmailConfig(c *gin.Context) {
+	var req struct {
+		Host     string `json:"host"`
+		Port     int    `json:"port"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		From     string `json:"from"`
+		FromName string `json:"fromName"`
+		UseTLS   bool   `json:"useTLS"`
+		Enable   bool   `json:"enable"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+	
+	db := model.GetDB()
+	var config model.EmailConfig
+	
+	if err := db.First(&config).Error; err != nil {
+		// 创建新配置
+		config = model.EmailConfig{
+			Host:     req.Host,
+			Port:     req.Port,
+			Username: req.Username,
+			Password: req.Password,
+			From:     req.From,
+			FromName: req.FromName,
+			UseTLS:   req.UseTLS,
+			Enable:   req.Enable,
+		}
+		if err := db.Create(&config).Error; err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "msg": "保存失败"})
+			return
+		}
+	} else {
+		// 更新配置
+		updates := map[string]interface{}{
+			"host":      req.Host,
+			"port":      req.Port,
+			"username":  req.Username,
+			"from":      req.From,
+			"from_name": req.FromName,
+			"use_tls":   req.UseTLS,
+			"enable":    req.Enable,
+		}
+		if req.Password != "" {
+			updates["password"] = req.Password
+		}
+		if err := db.Model(&config).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "msg": "更新失败"})
+			return
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "保存成功"})
+}
+
+// TestEmail 测试邮件发送
+func (h *Handler) TestEmail(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "请输入邮箱地址"})
+		return
+	}
+	
+	// 加载邮件配置
+	var config model.EmailConfig
+	if err := model.GetDB().Where("enable = ?", true).First(&config).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "邮件服务未配置或未启用"})
+		return
+	}
+	
+	// 初始化邮件服务并发送测试邮件
+	h.email.LoadConfig(config.Host, config.Port, config.Username, config.Password, config.From, config.FromName, config.UseTLS)
+	
+	if err := h.email.Send(req.Email, "NexCore 测试邮件", "<h1>测试成功</h1><p>这是一封测试邮件，邮件服务配置正常。</p>"); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "发送失败: " + err.Error()})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "测试邮件已发送"})
+}
+
+// GetTurnstileConfig 获取 Turnstile 配置
+func (h *Handler) GetTurnstileConfig(c *gin.Context) {
+	siteKey := os.Getenv("TURNSTILE_SITE_KEY")
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": gin.H{"siteKey": siteKey}})
+}
+
+// PanelProxy x-ui 面板反向代理
+func (h *Handler) PanelProxy(c *gin.Context) {
+	agentKey := c.Param("agentKey")
+	
+	// 根据 agentKey 查找节点
+	var node model.Node
+	if err := model.GetDB().Where("agent_key = ? AND enable = ?", agentKey, true).First(&node).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "节点不存在或已禁用"})
+		return
+	}
+	
+	// 获取请求路径
+	path := c.Param("path")
+	if path == "" {
+		path = "/"
+	}
+	
+	// 构建目标 URL
+	targetURL := fmt.Sprintf("http://%s:%d%s", node.IP, node.Port, path)
+	
+	// 添加查询参数
+	if c.Request.URL.RawQuery != "" {
+		targetURL += "?" + c.Request.URL.RawQuery
+	}
+	
+	// 创建反向代理
+	target, err := url.Parse(targetURL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "解析目标地址失败"})
+		return
+	}
+	
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	
+	// 自定义 Director 修改请求
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = fmt.Sprintf("%s:%d", node.IP, node.Port)
+		req.Header.Set("X-Forwarded-Host", c.Request.Host)
+		req.Header.Set("X-Forwarded-Proto", "https")
+		req.Header.Set("X-Real-IP", c.ClientIP())
+	}
+	
+	// 错误处理
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"success":false,"msg":"节点连接失败"}`))
+	}
+	
+	// 执行代理
+	proxy.ServeHTTP(c.Writer, c.Request)
+}
+
+// GenerateAgentKey 生成节点密钥
+func (h *Handler) generateAgentKey() string {
+	return service.GenerateAgentKey()
+}
+
+// AgentWebSocket Agent WebSocket 连接（预留）
+func (h *Handler) AgentWebSocket(c *gin.Context) {
+	// TODO: 实现 Agent 反向连接 WebSocket
+	c.JSON(http.StatusOK, gin.H{"success": false, "msg": "功能开发中"})
+}
+
+// ========== 节点 SSH 管理 ==========
+
+// ResetNodeCredentials 通过SSH重置节点面板账号密码
+func (h *Handler) ResetNodeCredentials(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "用户名和密码不能为空"})
+		return
+	}
+
+	node, err := h.node.GetByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "节点不存在"})
+		return
+	}
+
+	if node.SSHPassword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "节点未配置SSH密码"})
+		return
+	}
+
+	// SSH连接执行重置
+	err = h.node.ResetCredentials(id, req.Username, req.Password)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "重置成功"})
+}
+
+// CheckNodeUpdate 检查Agent更新
+func (h *Handler) CheckNodeUpdate(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	result, err := h.node.CheckUpdate(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": result})
+}
+
+// UpdateNodeAgent 更新Agent
+func (h *Handler) UpdateNodeAgent(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+
+	output, err := h.node.UpdateAgent(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error(), "output": output})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "更新成功", "output": output})
 }

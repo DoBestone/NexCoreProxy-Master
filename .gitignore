@@ -1,5 +1,7 @@
 # 编译产物
 nexcore
+nexcore-server
+NexCoreProxyHost
 *.exe
 *.exe~
 *.dll
@@ -8,6 +10,7 @@ nexcore
 
 # 数据文件
 data/
+logs/
 *.db
 *.log
 *.pid
@@ -30,3 +33,4 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+*.bak

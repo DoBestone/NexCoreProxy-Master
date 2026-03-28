@@ -1,81 +1,176 @@
 <template>
   <div class="users-page">
-    <a-card title="用户管理">
-      <template #extra>
-        <a-button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          添加用户
-        </a-button>
-      </template>
-      <a-table :columns="columns" :dataSource="users" :loading="loading" rowKey="id">
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">
+          <TeamOutlined class="title-icon" />
+          用户管理
+        </h1>
+        <p class="page-desc">管理系统用户，设置权限和余额</p>
+      </div>
+      <a-button type="primary" size="large" @click="showAddModal">
+        <template #icon><PlusOutlined /></template>
+        添加用户
+      </a-button>
+    </div>
+    
+    <!-- 用户列表卡片 -->
+    <a-card class="users-card">
+      <a-table 
+        :columns="columns" 
+        :dataSource="users" 
+        :loading="loading" 
+        rowKey="id"
+        :pagination="{ pageSize: 10, showSizeChanger: true }"
+      >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'role'">
-            <a-tag :color="record.role === 'admin' ? 'red' : 'blue'">
-              {{ record.role === 'admin' ? '管理员' : '用户' }}
-            </a-tag>
+          <template v-if="column.key === 'user'">
+            <div class="user-info">
+              <a-avatar :size="36" class="user-avatar">
+                {{ record.username?.charAt(0)?.toUpperCase() }}
+              </a-avatar>
+              <div class="user-detail">
+                <span class="user-name">{{ record.username }}</span>
+                <span class="user-email">{{ record.email || '-' }}</span>
+              </div>
+            </div>
           </template>
-          <template v-if="column.key === 'enable'">
-            <a-switch v-model:checked="record.enable" @change="toggleEnable(record)" />
+          <template v-if="column.key === 'role'">
+            <span :class="['role-badge', record.role]">
+              {{ record.role === 'admin' ? '管理员' : '用户' }}
+            </span>
           </template>
           <template v-if="column.key === 'balance'">
-            ¥{{ record.balance?.toFixed(2) || '0.00' }}
+            <span class="balance">¥{{ record.balance?.toFixed(2) || '0.00' }}</span>
           </template>
           <template v-if="column.key === 'traffic'">
-            {{ formatTraffic(record.trafficUsed) }} / {{ formatTraffic(record.trafficLimit) || '无限' }}
+            <div class="traffic-cell">
+              <span class="used">{{ formatTraffic(record.trafficUsed) }}</span>
+              <span class="divider">/</span>
+              <span class="limit">{{ formatTraffic(record.trafficLimit) || '无限' }}</span>
+            </div>
           </template>
           <template v-if="column.key === 'expireAt'">
-            {{ record.expireAt ? formatDate(record.expireAt) : '永久' }}
+            <span :class="['expire-date', { expired: isExpired(record.expireAt) }]">
+              {{ record.expireAt ? formatDate(record.expireAt) : '永久' }}
+            </span>
+          </template>
+          <template v-if="column.key === 'enable'">
+            <a-switch 
+              v-model:checked="record.enable" 
+              @change="toggleEnable(record)"
+              size="small"
+            />
           </template>
           <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="editUser(record)">编辑</a-button>
-              <a-button type="link" size="small" @click="showRechargeModal(record)">充值</a-button>
-              <a-popconfirm title="确定删除?" @confirm="deleteUserRecord(record.id)">
-                <a-button type="link" size="small" danger>删除</a-button>
+            <div class="action-btns">
+              <a-tooltip title="编辑">
+                <button class="action-btn" @click="editUser(record)">
+                  <EditOutlined />
+                </button>
+              </a-tooltip>
+              <a-tooltip title="充值">
+                <button class="action-btn" @click="showRechargeModal(record)">
+                  <DollarOutlined />
+                </button>
+              </a-tooltip>
+              <a-popconfirm title="确定删除此用户?" @confirm="deleteUserRecord(record.id)">
+                <button class="action-btn danger">
+                  <DeleteOutlined />
+                </button>
               </a-popconfirm>
-            </a-space>
+            </div>
           </template>
         </template>
       </a-table>
     </a-card>
 
     <!-- 添加/编辑用户弹窗 -->
-    <a-modal v-model:open="modalVisible" :title="editingUser ? '编辑用户' : '添加用户'" @ok="handleSubmit" :confirmLoading="submitting">
-      <a-form :model="form" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }">
-        <a-form-item label="用户名" required>
-          <a-input v-model:value="form.username" placeholder="用户名" :disabled="!!editingUser" />
-        </a-form-item>
-        <a-form-item label="密码" :required="!editingUser">
-          <a-input-password v-model:value="form.password" :placeholder="editingUser ? '留空不修改' : '密码'" />
-        </a-form-item>
-        <a-form-item label="邮箱">
-          <a-input v-model:value="form.email" placeholder="邮箱" />
-        </a-form-item>
-        <a-form-item label="角色">
-          <a-select v-model:value="form.role" style="width: 100%">
-            <a-select-option value="user">用户</a-select-option>
-            <a-select-option value="admin">管理员</a-select-option>
-          </a-select>
-        </a-form-item>
+    <a-modal 
+      v-model:open="modalVisible" 
+      :title="editingUser ? '编辑用户' : '添加用户'" 
+      @ok="handleSubmit" 
+      :confirmLoading="submitting"
+      :width="480"
+    >
+      <a-form :model="form" layout="vertical" class="user-form">
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="用户名" required>
+              <a-input v-model:value="form.username" placeholder="用户名" :disabled="!!editingUser" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="密码" :required="!editingUser">
+              <a-input-password v-model:value="form.password" :placeholder="editingUser ? '留空不修改' : '密码'" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="邮箱">
+              <a-input v-model:value="form.email" placeholder="邮箱地址" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="角色">
+              <a-select v-model:value="form.role" style="width: 100%">
+                <a-select-option value="user">普通用户</a-select-option>
+                <a-select-option value="admin">管理员</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
         <a-form-item label="数据限额">
           <a-input-number v-model:value="form.trafficLimit" :min="0" style="width: 100%" addon-after="GB" />
         </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="余额">
+              <a-input-number v-model:value="form.balance" :min="0" :precision="2" style="width: 100%" addon-before="¥" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="状态">
+              <a-switch v-model:checked="form.enable" checked-children="启用" un-checked-children="禁用" />
+            </a-form-item>
+          </a-col>
+        </a-row>
         <a-form-item label="备注">
-          <a-textarea v-model:value="form.remark" :rows="2" />
+          <a-textarea v-model:value="form.remark" :rows="2" placeholder="备注信息" />
         </a-form-item>
       </a-form>
     </a-modal>
 
     <!-- 充值弹窗 -->
-    <a-modal v-model:open="rechargeVisible" title="用户充值" @ok="handleRecharge" :confirmLoading="recharging">
-      <a-form :label-col="{ span: 6 }">
-        <a-form-item label="当前余额">
-          ¥{{ currentUser?.balance?.toFixed(2) || '0.00' }}
-        </a-form-item>
-        <a-form-item label="充值金额">
-          <a-input-number v-model:value="rechargeAmount" :min="0" style="width: 200px" addon-before="¥" />
-        </a-form-item>
-      </a-form>
+    <a-modal 
+      v-model:open="rechargeVisible" 
+      title="用户充值" 
+      @ok="handleRecharge" 
+      :confirmLoading="recharging"
+      :width="400"
+    >
+      <div class="recharge-info">
+        <div class="recharge-row">
+          <span class="label">用户</span>
+          <span class="value">{{ currentUser?.username }}</span>
+        </div>
+        <div class="recharge-row">
+          <span class="label">当前余额</span>
+          <span class="value balance">¥{{ currentUser?.balance?.toFixed(2) || '0.00' }}</span>
+        </div>
+        <div class="recharge-row">
+          <span class="label">充值金额</span>
+          <a-input-number 
+            v-model:value="rechargeAmount" 
+            :min="0" 
+            :precision="2"
+            style="width: 150px" 
+            addon-before="¥" 
+          />
+        </div>
+      </div>
     </a-modal>
   </div>
 </template>
@@ -83,7 +178,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, TeamOutlined, EditOutlined, DeleteOutlined, DollarOutlined } from '@ant-design/icons-vue'
 import { getUsers, addUser, updateUser, deleteUser } from '@/api'
 
 const loading = ref(false)
@@ -101,20 +196,20 @@ const form = ref({
   password: '',
   email: '',
   role: 'user',
+  balance: 0,
   trafficLimit: 0,
+  enable: true,
   remark: ''
 })
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-  { title: '用户名', dataIndex: 'username', key: 'username' },
-  { title: '邮箱', dataIndex: 'email', key: 'email' },
-  { title: '角色', key: 'role', width: 80 },
+  { title: '用户信息', key: 'user' },
+  { title: '角色', key: 'role', width: 100 },
   { title: '余额', key: 'balance', width: 100 },
-  { title: '数据量', key: 'traffic' },
+  { title: '流量使用', key: 'traffic' },
   { title: '到期时间', key: 'expireAt' },
   { title: '启用', key: 'enable', width: 80 },
-  { title: '操作', key: 'action', width: 150 }
+  { title: '操作', key: 'action', width: 130, fixed: 'right' }
 ]
 
 const formatTraffic = (bytes) => {
@@ -128,6 +223,11 @@ const formatTraffic = (bytes) => {
 const formatDate = (date) => {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('zh-CN')
+}
+
+const isExpired = (date) => {
+  if (!date) return false
+  return new Date(date) < new Date()
 }
 
 const fetchUsers = async () => {
@@ -144,7 +244,7 @@ const fetchUsers = async () => {
 
 const showAddModal = () => {
   editingUser.value = null
-  form.value = { username: '', password: '', email: '', role: 'user', trafficLimit: 0, remark: '' }
+  form.value = { username: '', password: '', email: '', role: 'user', balance: 0, trafficLimit: 0, enable: true, remark: '' }
   modalVisible.value = true
 }
 
@@ -217,3 +317,196 @@ onMounted(() => {
   fetchUsers()
 })
 </script>
+
+<style scoped>
+.users-page {
+  animation: fadeIn 0.3s ease;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #262626;
+  margin: 0;
+}
+
+.title-icon {
+  color: #1677ff;
+  font-size: 24px;
+}
+
+.page-desc {
+  color: #8c8c8c;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.users-card {
+  border-radius: 14px;
+}
+
+/* 用户信息 */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-avatar {
+  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  flex-shrink: 0;
+}
+
+.user-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-weight: 600;
+  color: #262626;
+}
+
+.user-email {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* 角色徽章 */
+.role-badge {
+  display: inline-flex;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.role-badge.admin {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+.role-badge.user {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+/* 余额 */
+.balance {
+  font-weight: 600;
+  color: #1677ff;
+}
+
+/* 流量 */
+.traffic-cell {
+  display: flex;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.traffic-cell .used {
+  color: #1677ff;
+  font-weight: 500;
+}
+
+.traffic-cell .divider {
+  color: #d9d9d9;
+}
+
+.traffic-cell .limit {
+  color: #8c8c8c;
+}
+
+/* 到期时间 */
+.expire-date {
+  font-size: 13px;
+}
+
+.expire-date.expired {
+  color: #ff4d4f;
+}
+
+/* 操作按钮 */
+.action-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #595959;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.action-btn.danger:hover {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+/* 充值弹窗 */
+.recharge-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recharge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recharge-row .label {
+  color: #8c8c8c;
+}
+
+.recharge-row .value {
+  font-weight: 500;
+}
+
+.recharge-row .value.balance {
+  font-size: 18px;
+  color: #1677ff;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .page-header .ant-btn {
+    width: 100%;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>

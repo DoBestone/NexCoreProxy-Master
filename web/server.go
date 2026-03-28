@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -35,7 +36,7 @@ func NewServer(port int, services *service.Services) *Server {
 // Start 启动服务器
 func (s *Server) Start() error {
 	log.Printf("Web服务器启动，端口: %d", s.port)
-	return s.engine.Run(":8082")
+	return s.engine.Run(fmt.Sprintf(":%d", s.port))
 }
 
 // Stop 停止服务器

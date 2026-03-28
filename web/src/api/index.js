@@ -2,13 +2,21 @@ import request from './request'
 
 // 认证
 export const login = (data) => request.post('/login', data)
+export const register = (data) => request.post('/register', data)
 export const logout = () => request.post('/logout')
 export const getUserInfo = () => request.get('/userinfo')
+export const updatePassword = (data) => request.put('/user/password', data)
 
 // ========== 公开接口 ==========
 
 // 套餐列表（公开）
 export const getPackages = () => request.get('/packages')
+
+// 公告列表（公开）
+export const getAnnouncements = () => request.get('/announcements')
+
+// Turnstile配置（公开）
+export const getTurnstileConfig = () => request.get('/turnstile-config')
 
 // ========== 用户端接口 ==========
 
@@ -25,6 +33,7 @@ export const createOrder = (data) => request.post('/orders', data)
 export const getMyTickets = () => request.get('/my/tickets')
 export const createTicket = (data) => request.post('/tickets', data)
 export const getTicketDetail = (id) => request.get(`/tickets/${id}`)
+export const replyMyTicket = (id, content) => request.post(`/my/tickets/${id}/reply`, { content })
 
 // ========== 管理员接口 ==========
 
@@ -46,6 +55,9 @@ export const getNodeInbounds = (id) => request.get(`/nodes/${id}/inbounds`)
 export const addNodeInbound = (id, data) => request.post(`/nodes/${id}/inbounds`, data)
 export const deleteNodeInbound = (nodeId, inboundId) => request.delete(`/nodes/${nodeId}/inbounds/${inboundId}`)
 export const restartNodeXray = (id) => request.post(`/nodes/${id}/restart`)
+export const resetNodeCredentials = (id, data) => request.post(`/nodes/${id}/reset-credentials`, data)
+export const checkNodeUpdate = (id) => request.post(`/nodes/${id}/check-update`)
+export const updateNodeAgent = (id) => request.post(`/nodes/${id}/update-agent`)
 
 // 套餐管理
 export const addPackage = (data) => request.post('/packages', data)
@@ -65,6 +77,17 @@ export const closeTicket = (id) => request.put(`/tickets/${id}/close`)
 export const getTemplates = () => request.get('/templates')
 export const addTemplate = (data) => request.post('/templates', data)
 export const deleteTemplate = (id) => request.delete(`/templates/${id}`)
+
+// 公告管理
+export const getAdminAnnouncements = () => request.get('/admin/announcements')
+export const addAnnouncement = (data) => request.post('/admin/announcements', data)
+export const updateAnnouncement = (id, data) => request.put(`/admin/announcements/${id}`, data)
+export const deleteAnnouncement = (id) => request.delete(`/admin/announcements/${id}`)
+
+// 邮件配置
+export const getEmailConfig = () => request.get('/admin/email-config')
+export const updateEmailConfig = (data) => request.put('/admin/email-config', data)
+export const testEmail = (email) => request.post('/admin/email-test', { email })
 
 // 统计
 export const getStatsOverview = () => request.get('/stats/overview')

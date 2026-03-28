@@ -1,67 +1,145 @@
 <template>
   <div class="templates-page">
-    <a-card title="入站模板">
-      <template #extra>
-        <a-button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          添加模板
-        </a-button>
-      </template>
-      <a-table :columns="columns" :dataSource="templates" :loading="loading" rowKey="id">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'protocol'">
-            <a-tag :color="getProtocolColor(record.protocol)">{{ record.protocol }}</a-tag>
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="applyTemplate(record)">应用</a-button>
-              <a-button type="link" size="small" @click="editTemplate(record)">编辑</a-button>
-              <a-popconfirm title="确定删除?" @confirm="deleteTemplateRecord(record.id)">
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </a-space>
-          </template>
-        </template>
-      </a-table>
-    </a-card>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div class="header-content">
+        <h1 class="page-title">
+          <FileTextOutlined class="title-icon" />
+          服务模板
+        </h1>
+        <p class="page-desc">管理入站模板，快速部署节点配置</p>
+      </div>
+      <a-button type="primary" size="large" @click="showAddModal">
+        <template #icon><PlusOutlined /></template>
+        添加模板
+      </a-button>
+    </div>
+    
+    <!-- 模板列表 -->
+    <div class="templates-grid">
+      <div 
+        v-for="template in templates" 
+        :key="template.id" 
+        class="template-card"
+      >
+        <div class="template-header">
+          <span :class="['protocol-badge', template.protocol]">
+            {{ template.protocol?.toUpperCase() }}
+          </span>
+          <span class="template-port">:{{ template.port }}</span>
+        </div>
+        
+        <div class="template-name">{{ template.name }}</div>
+        
+        <div v-if="template.remark" class="template-remark">
+          {{ template.remark }}
+        </div>
+        
+        <div class="template-actions">
+          <a-button type="primary" size="small" @click="applyTemplate(template)">
+            应用到节点
+          </a-button>
+          <div class="action-btns">
+            <button class="action-btn" @click="editTemplate(template)">
+              <EditOutlined />
+            </button>
+            <a-popconfirm title="确定删除此模板?" @confirm="deleteTemplateRecord(template.id)">
+              <button class="action-btn danger">
+                <DeleteOutlined />
+              </button>
+            </a-popconfirm>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 空状态 -->
+      <div v-if="!loading && templates.length === 0" class="empty-card" @click="showAddModal">
+        <PlusOutlined class="add-icon" />
+        <span>添加第一个模板</span>
+      </div>
+    </div>
+    
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-container">
+      <a-spin size="large" />
+    </div>
 
     <!-- 添加模板弹窗 -->
-    <a-modal v-model:open="modalVisible" :title="editingTemplate ? '编辑模板' : '添加模板'" @ok="handleSubmit" width="700px">
-      <a-form :model="form" :label-col="{ span: 4 }" :wrapper-col="{ span: 18 }">
-        <a-form-item label="模板名称" required>
-          <a-input v-model:value="form.name" placeholder="如: VMess-WS-TLS" />
+    <a-modal 
+      v-model:open="modalVisible" 
+      :title="editingTemplate ? '编辑模板' : '添加模板'" 
+      @ok="handleSubmit" 
+      width="700px"
+      :confirmLoading="submitting"
+    >
+      <a-form :model="form" layout="vertical" class="template-form">
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="模板名称" required>
+              <a-input v-model:value="form.name" placeholder="如: VMess-WS-TLS" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="协议" required>
+              <a-select v-model:value="form.protocol" style="width: 100%">
+                <a-select-option value="vmess">VMess</a-select-option>
+                <a-select-option value="vless">VLESS</a-select-option>
+                <a-select-option value="trojan">Trojan</a-select-option>
+                <a-select-option value="shadowsocks">Shadowsocks</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="端口">
+              <a-input-number v-model:value="form.port" :min="1" :max="65535" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
+        <a-form-item label="配置 JSON">
+          <a-textarea v-model:value="form.settings" :rows="6" placeholder="入站配置 JSON" class="code-textarea" />
         </a-form-item>
-        <a-form-item label="协议" required>
-          <a-select v-model:value="form.protocol" style="width: 100%">
-            <a-select-option value="vmess">VMess</a-select-option>
-            <a-select-option value="vless">VLESS</a-select-option>
-            <a-select-option value="trojan">Trojan</a-select-option>
-            <a-select-option value="shadowsocks">Shadowsocks</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="端口">
-          <a-input-number v-model:value="form.port" :min="1" :max="65535" style="width: 100%" />
-        </a-form-item>
-        <a-form-item label="配置JSON">
-          <a-textarea v-model:value="form.settings" :rows="6" placeholder="入站配置 JSON" />
-        </a-form-item>
-        <a-form-item label="传输层">
-          <a-textarea v-model:value="form.stream" :rows="4" placeholder="传输层配置 JSON（可选）" />
-        </a-form-item>
-        <a-form-item label="TLS配置">
-          <a-textarea v-model:value="form.tls" :rows="4" placeholder="TLS 配置 JSON（可选）" />
-        </a-form-item>
+        
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="传输层配置">
+              <a-textarea v-model:value="form.stream" :rows="4" placeholder="传输层配置 JSON（可选）" class="code-textarea" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="TLS 配置">
+              <a-textarea v-model:value="form.tls" :rows="4" placeholder="TLS 配置 JSON（可选）" class="code-textarea" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
         <a-form-item label="备注">
-          <a-input v-model:value="form.remark" />
+          <a-input v-model:value="form.remark" placeholder="模板说明" />
         </a-form-item>
       </a-form>
     </a-modal>
 
     <!-- 应用模板弹窗 -->
-    <a-modal v-model:open="applyVisible" title="应用模板到节点" @ok="handleApply">
-      <a-form :label-col="{ span: 6 }">
-        <a-form-item label="选择节点">
-          <a-select v-model:value="selectedNodeId" style="width: 100%" placeholder="选择节点">
+    <a-modal 
+      v-model:open="applyVisible" 
+      title="应用模板到节点" 
+      @ok="handleApply"
+      :confirmLoading="applying"
+    >
+      <div class="apply-info">
+        <div class="info-row">
+          <span class="label">模板</span>
+          <span class="value">{{ currentTemplate?.name }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">协议</span>
+          <span class="value">{{ currentTemplate?.protocol?.toUpperCase() }}</span>
+        </div>
+      </div>
+      
+      <a-form layout="vertical" style="margin-top: 16px">
+        <a-form-item label="选择目标节点" required>
+          <a-select v-model:value="selectedNodeId" style="width: 100%" placeholder="选择要应用的节点">
             <a-select-option v-for="node in nodes" :key="node.id" :value="node.id">
               {{ node.name }} ({{ node.ip }})
             </a-select-option>
@@ -75,7 +153,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, FileTextOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { getTemplates, addTemplate, deleteTemplate, getNodes, addNodeInbound } from '@/api'
 
 const loading = ref(false)
@@ -86,6 +164,8 @@ const applyVisible = ref(false)
 const editingTemplate = ref(null)
 const currentTemplate = ref(null)
 const selectedNodeId = ref(null)
+const submitting = ref(false)
+const applying = ref(false)
 
 const form = ref({
   name: '',
@@ -96,24 +176,6 @@ const form = ref({
   tls: '',
   remark: ''
 })
-
-const columns = [
-  { title: '名称', dataIndex: 'name', key: 'name' },
-  { title: '协议', key: 'protocol' },
-  { title: '端口', dataIndex: 'port', key: 'port' },
-  { title: '备注', dataIndex: 'remark', key: 'remark' },
-  { title: '操作', key: 'action', width: 180 }
-]
-
-const getProtocolColor = (protocol) => {
-  const colors = {
-    vmess: 'blue',
-    vless: 'green',
-    trojan: 'orange',
-    shadowsocks: 'purple'
-  }
-  return colors[protocol] || 'default'
-}
 
 const fetchData = async () => {
   loading.value = true
@@ -152,6 +214,7 @@ const editTemplate = (template) => {
 }
 
 const handleSubmit = async () => {
+  submitting.value = true
   try {
     await addTemplate(form.value)
     message.success('保存成功')
@@ -159,6 +222,8 @@ const handleSubmit = async () => {
     fetchData()
   } catch (e) {
     message.error('保存失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -183,6 +248,7 @@ const handleApply = async () => {
     message.warning('请选择节点')
     return
   }
+  applying.value = true
   try {
     const inbound = {
       remark: currentTemplate.value.name,
@@ -196,6 +262,8 @@ const handleApply = async () => {
     applyVisible.value = false
   } catch (e) {
     message.error('应用失败')
+  } finally {
+    applying.value = false
   }
 }
 
@@ -206,6 +274,213 @@ onMounted(() => {
 
 <style scoped>
 .templates-page {
-  /* styles */
+  animation: fadeIn 0.3s ease;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #262626;
+  margin: 0;
+}
+
+.title-icon {
+  color: #1677ff;
+  font-size: 24px;
+}
+
+.page-desc {
+  color: #8c8c8c;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+/* 模板网格 */
+.templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* 模板卡片 */
+.template-card {
+  background: white;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.template-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.template-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.protocol-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.protocol-badge.vmess { background: #e6f4ff; color: #1677ff; }
+.protocol-badge.vless { background: #f6ffed; color: #52c41a; }
+.protocol-badge.trojan { background: #fff7e6; color: #d46b08; }
+.protocol-badge.shadowsocks { background: #e6fffb; color: #08979c; }
+
+.template-port {
+  font-size: 14px;
+  color: #8c8c8c;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.template-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.template-remark {
+  font-size: 13px;
+  color: #8c8c8c;
+  margin-bottom: 16px;
+}
+
+.template-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.action-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #595959;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.action-btn.danger:hover {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+/* 空状态卡片 */
+.empty-card {
+  background: white;
+  border-radius: 14px;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 2px dashed #d9d9d9;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 200px;
+}
+
+.empty-card:hover {
+  border-color: #1677ff;
+  background: #f0f9ff;
+}
+
+.empty-card .add-icon {
+  font-size: 32px;
+  color: #bfbfbf;
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 48px;
+}
+
+/* 表单样式 */
+.template-form :deep(.ant-form-item-label > label) {
+  font-weight: 500;
+}
+
+.code-textarea {
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 12px;
+}
+
+/* 应用弹窗 */
+.apply-info {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.info-row {
+  display: flex;
+  gap: 16px;
+}
+
+.info-row .label {
+  color: #8c8c8c;
+  width: 50px;
+}
+
+.info-row .value {
+  font-weight: 500;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .templates-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

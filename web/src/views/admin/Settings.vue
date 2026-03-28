@@ -1,40 +1,131 @@
 <template>
   <div class="settings-page">
-    <a-card title="系统设置">
-      <a-form :label-col="{ span: 4 }" :wrapper-col="{ span: 12 }">
-        <a-form-item label="修改密码">
-          <a-input-password v-model:value="passwordForm.oldPassword" placeholder="当前密码" style="width: 200px; margin-right: 8px" />
-          <a-input-password v-model:value="passwordForm.newPassword" placeholder="新密码" style="width: 200px; margin-right: 8px" />
-          <a-button type="primary" @click="changePassword">修改</a-button>
-        </a-form-item>
-      </a-form>
-    </a-card>
-
-    <a-card title="安装命令" style="margin-top: 16px">
-      <p>在节点服务器上执行以下命令安装 Agent：</p>
-      <a-typography-paragraph copyable :code="true" style="background: #f5f5f5; padding: 16px; border-radius: 8px">
-        {{ installCommand }}
-      </a-typography-paragraph>
-    </a-card>
-
-    <a-card title="关于" style="margin-top: 16px">
-      <p><strong>NexCoreProxy Master</strong></p>
-      <p>版本: 1.0.0</p>
-      <p>基于 x-ui 的多节点管理面板</p>
-    </a-card>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <h1 class="page-title">
+        <SettingOutlined class="title-icon" />
+        系统设置
+      </h1>
+    </div>
+    
+    <!-- 设置卡片 -->
+    <div class="settings-grid">
+      <!-- 密码修改 -->
+      <a-card class="settings-card">
+        <template #title>
+          <div class="card-title">
+            <LockOutlined />
+            密码修改
+          </div>
+        </template>
+        
+        <a-form layout="vertical" class="password-form">
+          <a-form-item label="当前密码">
+            <a-input-password 
+              v-model:value="passwordForm.oldPassword" 
+              placeholder="请输入当前密码" 
+            />
+          </a-form-item>
+          <a-form-item label="新密码">
+            <a-input-password 
+              v-model:value="passwordForm.newPassword" 
+              placeholder="请输入新密码" 
+            />
+          </a-form-item>
+          <a-form-item>
+            <a-button type="primary" @click="changePassword">
+              修改密码
+            </a-button>
+          </a-form-item>
+        </a-form>
+      </a-card>
+      
+      <!-- 安装命令 -->
+      <a-card class="settings-card">
+        <template #title>
+          <div class="card-title">
+            <CodeOutlined />
+            Agent 安装命令
+          </div>
+        </template>
+        
+        <p class="card-desc">在节点服务器上执行以下命令安装 Agent：</p>
+        
+        <div class="code-block">
+          <pre>{{ installCommand }}</pre>
+          <button class="copy-btn" @click="copyCommand">
+            <CopyOutlined />
+          </button>
+        </div>
+        
+        <div class="tips">
+          <InfoCircleOutlined />
+          <span>安装完成后，节点将自动连接到 Master 并上线</span>
+        </div>
+      </a-card>
+      
+      <!-- 关于 -->
+      <a-card class="settings-card">
+        <template #title>
+          <div class="card-title">
+            <InfoCircleOutlined />
+            关于系统
+          </div>
+        </template>
+        
+        <div class="about-content">
+          <div class="about-logo">
+            <div class="logo-icon">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2"/>
+                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2"/>
+                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </div>
+            <div class="logo-text">NexCore</div>
+          </div>
+          
+          <div class="about-info">
+            <div class="info-item">
+              <span class="label">版本</span>
+              <span class="value">v1.0.0</span>
+            </div>
+            <div class="info-item">
+              <span class="label">框架</span>
+              <span class="value">Go + Gin + Vue 3</span>
+            </div>
+            <div class="info-item">
+              <span class="label">说明</span>
+              <span class="value">基于 x-ui 的多节点网络代理管理系统</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="about-links">
+          <a href="https://github.com/DoBestone/NexCoreProxy-Master" target="_blank" class="link-btn">
+            <GithubOutlined />
+            GitHub
+          </a>
+        </div>
+      </a-card>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { message } from 'ant-design-vue'
+import { 
+  SettingOutlined, LockOutlined, CodeOutlined, 
+  InfoCircleOutlined, CopyOutlined, GithubOutlined 
+} from '@ant-design/icons-vue'
 
 const passwordForm = ref({
   oldPassword: '',
   newPassword: ''
 })
 
-const installCommand = `bash <(curl -Ls https://your-domain.com/install-agent.sh) -u ncp_admin -p 'NexCoreProxy@2026' --unattended`
+const installCommand = `bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -u admin -pass YourPassword`
 
 const changePassword = () => {
   if (!passwordForm.value.oldPassword || !passwordForm.value.newPassword) {
@@ -44,10 +135,199 @@ const changePassword = () => {
   message.success('密码修改成功')
   passwordForm.value = { oldPassword: '', newPassword: '' }
 }
+
+const copyCommand = () => {
+  navigator.clipboard.writeText(installCommand)
+  message.success('已复制到剪贴板')
+}
 </script>
 
 <style scoped>
 .settings-page {
-  max-width: 800px;
+  animation: fadeIn 0.3s ease;
+  max-width: 900px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #262626;
+  margin: 0 0 24px;
+}
+
+.title-icon {
+  color: #1677ff;
+  font-size: 24px;
+}
+
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-card {
+  border-radius: 14px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.card-title .anticon {
+  color: #1677ff;
+}
+
+.card-desc {
+  color: #595959;
+  margin-bottom: 16px;
+}
+
+/* 密码表单 */
+.password-form {
+  max-width: 320px;
+}
+
+/* 代码块 */
+.code-block {
+  position: relative;
+  background: #1e1e1e;
+  border-radius: 10px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.code-block pre {
+  margin: 0;
+  color: #d4d4d4;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 6px;
+  color: #d4d4d4;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.tips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #e6f4ff;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1677ff;
+}
+
+/* 关于内容 */
+.about-content {
+  margin-bottom: 20px;
+}
+
+.about-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.logo-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.logo-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: #262626;
+}
+
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  gap: 16px;
+}
+
+.info-item .label {
+  color: #8c8c8c;
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.info-item .value {
+  color: #262626;
+}
+
+.about-links {
+  display: flex;
+  gap: 12px;
+}
+
+.link-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  color: #595959;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.link-btn:hover {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
