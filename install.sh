@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # ── 全局常量 ──────────────────────────────────────────────────
-GITHUB_REPO="DoBestone/NexCoreProxy"
+GITHUB_REPO="DoBestone/NexCoreProxy-Master"
 SERVICE_NAME="nexcoreproxy-master"
 BINARY_NAME="nexcore-master"
 DEFAULT_INSTALL_DIR="/opt/nexcoreproxy-master"
