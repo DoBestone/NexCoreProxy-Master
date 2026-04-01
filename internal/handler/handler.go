@@ -1,21 +1,24 @@
 package handler
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
+
+	"nexcoreproxy-master/internal/model"
+	"nexcoreproxy-master/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"nexcoreproxy-master/internal/model"
-	"nexcoreproxy-master/internal/service"
 )
 
 // Handler API处理器
@@ -48,13 +51,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	{
 		// 认证
 		api.POST("/login", h.Login)
-		api.POST("/register", h.Register)  // 用户注册
+		api.POST("/register", h.Register) // 用户注册
 		api.POST("/logout", h.Logout)
 		api.GET("/userinfo", h.GetUserInfo)
 
 		// 公开接口
-		api.GET("/packages", h.GetPackages)       // 套餐列表（公开）
-		api.GET("/announcements", h.GetAnnouncements) // 公告列表（公开）
+		api.GET("/packages", h.GetPackages)                // 套餐列表（公开）
+		api.GET("/announcements", h.GetAnnouncements)      // 公告列表（公开）
 		api.GET("/turnstile-config", h.GetTurnstileConfig) // Turnstile配置（公开）
 
 		// 订阅链接（公开，通过token验证）
@@ -223,8 +226,8 @@ func (h *Handler) getCurrentUserID(c *gin.Context) uint {
 // Login 登录
 func (h *Handler) Login(c *gin.Context) {
 	var req struct {
-		Username      string `json:"username"`
-		Password      string `json:"password"`
+		Username       string `json:"username"`
+		Password       string `json:"password"`
 		TurnstileToken string `json:"turnstileToken"`
 	}
 
@@ -235,7 +238,11 @@ func (h *Handler) Login(c *gin.Context) {
 
 	// 验证 Turnstile
 	secretKey := os.Getenv("TURNSTILE_SECRET_KEY")
-	if secretKey != "" && req.TurnstileToken != "" {
+	if secretKey != "" {
+		if req.TurnstileToken == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "请完成人机验证"})
+			return
+		}
 		if !h.verifyTurnstile(req.TurnstileToken, secretKey, c.ClientIP()) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "人机验证失败，请重试"})
 			return
@@ -272,30 +279,30 @@ func (h *Handler) Login(c *gin.Context) {
 // verifyTurnstile 验证 Cloudflare Turnstile
 func (h *Handler) verifyTurnstile(token, secretKey, clientIP string) bool {
 	apiURL := "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-	
+
 	data := url.Values{}
 	data.Set("secret", secretKey)
 	data.Set("response", token)
 	data.Set("remoteip", clientIP)
-	
+
 	resp, err := http.PostForm(apiURL, data)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false
 	}
-	
+
 	var result struct {
 		Success bool `json:"success"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return false
 	}
-	
+
 	return result.Success
 }
 
@@ -307,12 +314,27 @@ func (h *Handler) Logout(c *gin.Context) {
 
 // GetUserInfo 获取用户信息
 func (h *Handler) GetUserInfo(c *gin.Context) {
-	// TODO: 从 token 获取用户信息
+	userID := h.getCurrentUserID(c)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "msg": "未登录"})
+		return
+	}
+
+	var user model.User
+	if err := model.GetDB().First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "用户不存在"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"obj": gin.H{
-			"username": "admin",
-			"role":     "admin",
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"role":     user.Role,
+			"balance":  user.Balance,
+			"enable":   user.Enable,
 		},
 	})
 }
@@ -329,23 +351,63 @@ func (h *Handler) UpdatePassword(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现密码修改
+	if len(req.NewPassword) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "新密码长度不能少于6位"})
+		return
+	}
+
+	userID := h.getCurrentUserID(c)
+	var user model.User
+	if err := model.GetDB().First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "用户不存在"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "旧密码错误"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "密码加密失败"})
+		return
+	}
+
+	if err := model.GetDB().Model(&user).Update("password", string(hashedPassword)).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "修改失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "密码修改成功"})
 }
 
-// GetNodes 获取节点列表
+// GetNodes 获取节点列表（管理员，含禁用节点）
 func (h *Handler) GetNodes(c *gin.Context) {
-	nodes, err := h.node.GetAll()
+	nodes, err := h.node.GetAllAdmin()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "获取节点列表失败"})
 		return
 	}
 
-	// 返回完整密码，方便确认
-	// 密码已加密存储，管理端可见
+	// 管理端需要看到密码，手动构建返回
+	var result []gin.H
+	for _, n := range nodes {
+		result = append(result, gin.H{
+			"id": n.ID, "name": n.Name, "ip": n.IP, "port": n.Port,
+			"username": n.Username, "password": n.Password,
+			"sshPort": n.SSHPort, "sshUser": n.SSHUser, "sshPassword": n.SSHPassword,
+			"agentKey": n.AgentKey, "apiToken": n.APIToken, "apiPort": n.APIPort,
+			"masterUrl": n.MasterURL, "enable": n.Enable, "remark": n.Remark,
+			"status": n.Status, "xrayVersion": n.XrayVersion,
+			"cpu": n.CPU, "memory": n.Memory, "disk": n.Disk, "uptime": n.Uptime,
+			"uploadTotal": n.UploadTotal, "downloadTotal": n.DownloadTotal,
+			"lastSyncAt": n.LastSyncAt, "connected": n.Connected,
+			"createdAt": n.CreatedAt, "updatedAt": n.UpdatedAt,
+		})
+	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": nodes})
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": result})
 }
 
 // AddNode 添加节点
@@ -414,13 +476,13 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 
 	// 构建更新数据
 	updates := map[string]interface{}{
-		"name":      req.Name,
-		"ip":        req.IP,
-		"port":      req.Port,
-		"username":  req.Username,
-		"ssh_port":  req.SSHPort,
-		"ssh_user":  req.SSHUser,
-		"remark":    req.Remark,
+		"name":     req.Name,
+		"ip":       req.IP,
+		"port":     req.Port,
+		"username": req.Username,
+		"ssh_port": req.SSHPort,
+		"ssh_user": req.SSHUser,
+		"remark":   req.Remark,
 	}
 
 	// 只有提供了密码才更新
@@ -690,10 +752,10 @@ func (h *Handler) GetUsers(c *gin.Context) {
 // AddUser 添加用户
 func (h *Handler) AddUser(c *gin.Context) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Email    string `json:"email"`
-		Role     string `json:"role"`
+		Username string  `json:"username"`
+		Password string  `json:"password"`
+		Email    string  `json:"email"`
+		Role     string  `json:"role"`
 		Balance  float64 `json:"balance"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -720,14 +782,14 @@ func (h *Handler) AddUser(c *gin.Context) {
 func (h *Handler) UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
-		Username string  `json:"username"`
-		Password string  `json:"password"`
-		Email    string  `json:"email"`
-		Role     string  `json:"role"`
-		Balance  float64 `json:"balance"`
-		TrafficLimit int64 `json:"trafficLimit"`
-		Enable   bool    `json:"enable"`
-		Remark   string  `json:"remark"`
+		Username     string  `json:"username"`
+		Password     string  `json:"password"`
+		Email        string  `json:"email"`
+		Role         string  `json:"role"`
+		Balance      float64 `json:"balance"`
+		TrafficLimit int64   `json:"trafficLimit"`
+		Enable       bool    `json:"enable"`
+		Remark       string  `json:"remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
@@ -745,13 +807,13 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 
 	// 构建更新数据
 	updates := map[string]interface{}{
-		"username": req.Username,
-		"email":    req.Email,
-		"role":     req.Role,
-		"balance":  req.Balance,
+		"username":      req.Username,
+		"email":         req.Email,
+		"role":          req.Role,
+		"balance":       req.Balance,
 		"traffic_limit": req.TrafficLimit,
-		"enable":   req.Enable,
-		"remark":   req.Remark,
+		"enable":        req.Enable,
+		"remark":        req.Remark,
 	}
 
 	// 只有提供了密码才更新
@@ -879,9 +941,9 @@ func (h *Handler) DeletePackage(c *gin.Context) {
 
 // GetMyOrders 获取我的订单
 func (h *Handler) GetMyOrders(c *gin.Context) {
-	// TODO: 从 token 获取用户ID
+	userID := h.getCurrentUserID(c)
 	var orders []model.Order
-	model.GetDB().Order("created_at desc").Limit(20).Find(&orders)
+	model.GetDB().Where("user_id = ?", userID).Order("created_at desc").Limit(20).Find(&orders)
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": orders})
 }
 
@@ -912,31 +974,42 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	// 如果是余额支付，直接扣除并分配节点
-	if req.PayMethod == "balance" {
-		if err := h.user.PurchasePackage(userID, req.PackageID); err != nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
-			return
-		}
-	}
-
 	// 生成订单号
-	orderNo := fmt.Sprintf("NCP%d%d", time.Now().UnixNano()/1000000, rand.Intn(1000))
+	randN, _ := rand.Int(rand.Reader, big.NewInt(1000))
+	orderNo := fmt.Sprintf("NCP%d%d", time.Now().UnixNano()/1000000, randN.Int64())
 
+	now := time.Now()
 	order := &model.Order{
 		OrderNo:     orderNo,
 		UserID:      userID,
 		PackageID:   pkg.ID,
 		PackageName: pkg.Name,
 		Amount:      pkg.Price,
-		Status:      "paid",
 		PayMethod:   req.PayMethod,
-		PaidAt:      &[]time.Time{time.Now()}[0],
 	}
 
-	if err := model.GetDB().Create(order).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "创建订单失败"})
-		return
+	// 余额支付：先创建订单再扣款，保证原子性
+	if req.PayMethod == "balance" {
+		order.Status = "paid"
+		order.PaidAt = &now
+
+		// 在事务中同时创建订单和扣款
+		err := model.GetDB().Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(order).Error; err != nil {
+				return err
+			}
+			return h.user.PurchasePackage(userID, req.PackageID)
+		})
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+			return
+		}
+	} else {
+		order.Status = "pending"
+		if err := model.GetDB().Create(order).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "创建订单失败"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": order, "msg": "购买成功"})
@@ -973,8 +1046,9 @@ func (h *Handler) UpdateOrderStatus(c *gin.Context) {
 
 // GetMyTickets 获取我的工单
 func (h *Handler) GetMyTickets(c *gin.Context) {
+	userID := h.getCurrentUserID(c)
 	var tickets []model.Ticket
-	model.GetDB().Order("created_at desc").Find(&tickets)
+	model.GetDB().Where("user_id = ?", userID).Order("created_at desc").Find(&tickets)
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": tickets})
 }
 
@@ -987,12 +1061,23 @@ func (h *Handler) GetAllTickets(c *gin.Context) {
 
 // CreateTicket 创建工单
 func (h *Handler) CreateTicket(c *gin.Context) {
-	var ticket model.Ticket
-	if err := c.ShouldBindJSON(&ticket); err != nil {
+	userID := h.getCurrentUserID(c)
+	var req struct {
+		Subject  string `json:"subject" binding:"required"`
+		Content  string `json:"content" binding:"required"`
+		Priority int    `json:"priority"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
 	}
-	ticket.Status = "open"
+	ticket := model.Ticket{
+		UserID:   userID,
+		Subject:  req.Subject,
+		Content:  req.Content,
+		Priority: req.Priority,
+		Status:   "open",
+	}
 	if err := model.GetDB().Create(&ticket).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "创建工单失败"})
 		return
@@ -1003,12 +1088,29 @@ func (h *Handler) CreateTicket(c *gin.Context) {
 // GetTicketDetail 获取工单详情
 func (h *Handler) GetTicketDetail(c *gin.Context) {
 	id := c.Param("id")
+	userID := h.getCurrentUserID(c)
+	role, _ := c.Get("role")
+
 	var ticket model.Ticket
-	if err := model.GetDB().Preload("Replies").First(&ticket, id).Error; err != nil {
+	if err := model.GetDB().First(&ticket, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "工单不存在"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": ticket})
+
+	// 非管理员只能查看自己的工单
+	if role != "admin" && ticket.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "msg": "无权查看"})
+		return
+	}
+
+	// 加载回复
+	var replies []model.TicketReply
+	model.GetDB().Where("ticket_id = ?", ticket.ID).Order("created_at asc").Find(&replies)
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": gin.H{
+		"ticket":  ticket,
+		"replies": replies,
+	}})
 }
 
 // ReplyTicket 回复工单
@@ -1041,7 +1143,7 @@ func (h *Handler) CloseTicket(c *gin.Context) {
 
 // UserReplyTicket 用户回复工单
 func (h *Handler) UserReplyTicket(c *gin.Context) {
-	userID := c.GetUint("userID")
+	userID := h.getCurrentUserID(c)
 	ticketID := c.Param("id")
 
 	var req struct {
@@ -1171,21 +1273,17 @@ func (h *Handler) GetMySubscribe(c *gin.Context) {
 
 // 辅助函数
 func parseUint(s string) uint {
-	var n uint
-	for _, c := range s {
-		if c >= '0' && c <= '9' {
-			n = n*10 + uint(c-'0')
-		}
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0
 	}
-	return n
+	return uint(n)
 }
 
 func parseInt(s string) int {
-	var n int
-	for _, c := range s {
-		if c >= '0' && c <= '9' {
-			n = n*10 + int(c-'0')
-		}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
 	}
 	return n
 }
@@ -1207,7 +1305,11 @@ func (h *Handler) Register(c *gin.Context) {
 
 	// 验证 Turnstile
 	secretKey := os.Getenv("TURNSTILE_SECRET_KEY")
-	if secretKey != "" && req.TurnstileToken != "" {
+	if secretKey != "" {
+		if req.TurnstileToken == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "请完成人机验证"})
+			return
+		}
 		if !h.verifyTurnstile(req.TurnstileToken, secretKey, c.ClientIP()) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "人机验证失败，请重试"})
 			return
@@ -1392,13 +1494,13 @@ func (h *Handler) DeleteAnnouncement(c *gin.Context) {
 func (h *Handler) GetEmailConfig(c *gin.Context) {
 	var config model.EmailConfig
 	db := model.GetDB()
-	
+
 	if err := db.First(&config).Error; err != nil {
 		// 返回空配置
 		c.JSON(http.StatusOK, gin.H{"success": true, "obj": nil})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": config})
 }
 
@@ -1414,15 +1516,15 @@ func (h *Handler) UpdateEmailConfig(c *gin.Context) {
 		UseTLS   bool   `json:"useTLS"`
 		Enable   bool   `json:"enable"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
 	}
-	
+
 	db := model.GetDB()
 	var config model.EmailConfig
-	
+
 	if err := db.First(&config).Error; err != nil {
 		// 创建新配置
 		config = model.EmailConfig{
@@ -1458,7 +1560,7 @@ func (h *Handler) UpdateEmailConfig(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "保存成功"})
 }
 
@@ -1467,27 +1569,27 @@ func (h *Handler) TestEmail(c *gin.Context) {
 	var req struct {
 		Email string `json:"email" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "请输入邮箱地址"})
 		return
 	}
-	
+
 	// 加载邮件配置
 	var config model.EmailConfig
 	if err := model.GetDB().Where("enable = ?", true).First(&config).Error; err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "邮件服务未配置或未启用"})
 		return
 	}
-	
+
 	// 初始化邮件服务并发送测试邮件
 	h.email.LoadConfig(config.Host, config.Port, config.Username, config.Password, config.From, config.FromName, config.UseTLS)
-	
+
 	if err := h.email.Send(req.Email, "NexCore 测试邮件", "<h1>测试成功</h1><p>这是一封测试邮件，邮件服务配置正常。</p>"); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "发送失败: " + err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "测试邮件已发送"})
 }
 
@@ -1500,37 +1602,37 @@ func (h *Handler) GetTurnstileConfig(c *gin.Context) {
 // PanelProxy x-ui 面板反向代理
 func (h *Handler) PanelProxy(c *gin.Context) {
 	agentKey := c.Param("agentKey")
-	
+
 	// 根据 agentKey 查找节点
 	var node model.Node
 	if err := model.GetDB().Where("agent_key = ? AND enable = ?", agentKey, true).First(&node).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "节点不存在或已禁用"})
 		return
 	}
-	
+
 	// 获取请求路径
 	path := c.Param("path")
 	if path == "" {
 		path = "/"
 	}
-	
+
 	// 构建目标 URL
 	targetURL := fmt.Sprintf("http://%s:%d%s", node.IP, node.Port, path)
-	
+
 	// 添加查询参数
 	if c.Request.URL.RawQuery != "" {
 		targetURL += "?" + c.Request.URL.RawQuery
 	}
-	
+
 	// 创建反向代理
 	target, err := url.Parse(targetURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "解析目标地址失败"})
 		return
 	}
-	
+
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	
+
 	// 自定义 Director 修改请求
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
@@ -1540,13 +1642,13 @@ func (h *Handler) PanelProxy(c *gin.Context) {
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req.Header.Set("X-Real-IP", c.ClientIP())
 	}
-	
+
 	// 错误处理
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		w.WriteHeader(http.StatusBadGateway)
 		w.Write([]byte(`{"success":false,"msg":"节点连接失败"}`))
 	}
-	
+
 	// 执行代理
 	proxy.ServeHTTP(c.Writer, c.Request)
 }

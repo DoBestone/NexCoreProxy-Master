@@ -25,6 +25,7 @@ func InitDB(dsn string) error {
 	}
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	return nil
 }
@@ -55,7 +56,7 @@ func AutoMigrate() error {
 type User struct {
 	ID           uint       `json:"id" gorm:"primaryKey"`
 	Username     string     `json:"username" gorm:"uniqueIndex;size:50"`
-	Password     string     `json:"password" gorm:"size:255"`
+	Password     string     `json:"-" gorm:"size:255"`
 	Email        string     `json:"email" gorm:"size:100"`
 	Role         string     `json:"role" gorm:"size:20;default:'user'"` // admin, user
 	Balance      float64    `json:"balance" gorm:"default:0"`           // 余额
@@ -64,8 +65,8 @@ type User struct {
 	ExpireAt     *time.Time `json:"expireAt"`                           // 到期时间
 	Enable       bool       `json:"enable" gorm:"default:true"`
 	Remark       string     `json:"remark" gorm:"size:255"`
-	InviteCode   string     `json:"inviteCode" gorm:"size:20"`         // 邀请码
-	InvitedBy    uint       `json:"invitedBy"`                          // 邀请人ID
+	InviteCode   string     `json:"inviteCode" gorm:"size:20"` // 邀请码
+	InvitedBy    uint       `json:"invitedBy"`                 // 邀请人ID
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
 }
@@ -104,13 +105,13 @@ type Node struct {
 	IP            string     `json:"ip" gorm:"size:50"`
 	Port          int        `json:"port" gorm:"default:54321"`
 	Username      string     `json:"username" gorm:"size:50"`
-	Password      string     `json:"password" gorm:"size:255"`
+	Password      string     `json:"-" gorm:"size:255"`
 	SSHPort       int        `json:"sshPort" gorm:"default:22"`
 	SSHUser       string     `json:"sshUser" gorm:"size:50"`
-	SSHPassword   string     `json:"sshPassword" gorm:"size:255"`
+	SSHPassword   string     `json:"-" gorm:"size:255"`
 	AgentKey      string     `json:"agentKey" gorm:"size:64;uniqueIndex"` // Agent连接密钥
-	APIToken      string     `json:"apiToken" gorm:"size:255"`           // ncp-api Token
-	APIPort       int        `json:"apiPort" gorm:"default:54322"`       // ncp-api 端口
+	APIToken      string     `json:"apiToken" gorm:"size:255"`            // ncp-api Token
+	APIPort       int        `json:"apiPort" gorm:"default:54322"`        // ncp-api 端口
 	MasterURL     string     `json:"masterUrl" gorm:"size:255"`           // Master地址
 	Enable        bool       `json:"enable" gorm:"default:true"`
 	Remark        string     `json:"remark" gorm:"size:255"`
@@ -170,6 +171,7 @@ type Order struct {
 	PaidAt      *time.Time `json:"paidAt"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+	User        User       `json:"user" gorm:"foreignKey:UserID"`
 }
 
 // Ticket 工单模型
@@ -182,6 +184,7 @@ type Ticket struct {
 	Priority  int       `json:"priority" gorm:"default:0"`            // 0=普通, 1=紧急
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	User      User      `json:"user" gorm:"foreignKey:UserID"`
 }
 
 // TicketReply 工单回复

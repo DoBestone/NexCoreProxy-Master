@@ -29,7 +29,7 @@
         </div>
         
         <div class="package-price">
-          <span class="price-symbol">¥</span>
+          <span class="price-symbol">$</span>
           <span class="price-value">{{ pkg.price }}</span>
         </div>
         
@@ -120,7 +120,7 @@
           </a-col>
           <a-col :span="8">
             <a-form-item label="价格" required>
-              <a-input-number v-model:value="form.price" :min="0" :precision="2" style="width: 100%" addon-before="¥" />
+              <a-input-number v-model:value="form.price" :min="0" :precision="2" style="width: 100%" addon-before="$" />
             </a-form-item>
           </a-col>
         </a-row>

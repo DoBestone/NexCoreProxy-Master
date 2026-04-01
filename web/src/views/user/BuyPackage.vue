@@ -21,7 +21,7 @@
         <div class="package-name">{{ pkg.name }}</div>
         
         <div class="package-price">
-          <span class="currency">¥</span>
+          <span class="currency">$</span>
           <span class="amount">{{ pkg.price }}</span>
         </div>
         
@@ -73,7 +73,7 @@
         </div>
         <div class="summary-item">
           <span class="label">价格</span>
-          <span class="value price">¥{{ selectedPackage?.price }}</span>
+          <span class="value price">${{ selectedPackage?.price }}</span>
         </div>
         <div class="summary-item">
           <span class="label">流量</span>

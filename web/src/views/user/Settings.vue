@@ -63,7 +63,7 @@
         </div>
         <div class="info-item">
           <span class="info-label">余额</span>
-          <span class="info-value balance">¥{{ userInfo.balance?.toFixed(2) || '0.00' }}</span>
+          <span class="info-value balance">${{ userInfo.balance?.toFixed(2) || '0.00' }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">流量限额</span>

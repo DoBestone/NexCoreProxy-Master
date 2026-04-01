@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -78,6 +80,11 @@ type AgentAPIResponse struct {
 	Data    any    `json:"data"`
 }
 
+// agentURL 构建 Agent API URL（IPv6 安全）
+func agentURL(ip string, port int, path string) string {
+	return fmt.Sprintf("http://%s%s", net.JoinHostPort(ip, strconv.Itoa(port)), path)
+}
+
 // doRequest 执行请求
 func (c *AgentAPIClient) doRequest(url, token string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
@@ -121,7 +128,7 @@ func (c *AgentAPIClient) doRequestWithRetry(url, token string, maxRetries int) (
 
 // GetStatus 获取节点状态
 func (c *AgentAPIClient) GetStatus(ip string, port int, token string) (*AgentAPIStatus, error) {
-	url := fmt.Sprintf("http://%s:%d/api/status", ip, port)
+	url := agentURL(ip, port, "/api/status")
 	body, err := c.doRequestWithRetry(url, token, 2)
 	if err != nil {
 		return nil, err
@@ -137,7 +144,7 @@ func (c *AgentAPIClient) GetStatus(ip string, port int, token string) (*AgentAPI
 
 // GetInbounds 获取入站列表
 func (c *AgentAPIClient) GetInbounds(ip string, port int, token string) (*AgentAPIInbounds, error) {
-	url := fmt.Sprintf("http://%s:%d/api/inbounds", ip, port)
+	url := agentURL(ip, port, "/api/inbounds")
 	body, err := c.doRequestWithRetry(url, token, 2)
 	if err != nil {
 		return nil, err
@@ -153,7 +160,7 @@ func (c *AgentAPIClient) GetInbounds(ip string, port int, token string) (*AgentA
 
 // GetInbound 获取单个入站详情
 func (c *AgentAPIClient) GetInbound(ip string, port int, token string, inboundID int) (map[string]interface{}, error) {
-	url := fmt.Sprintf("http://%s:%d/api/inbound/%d", ip, port, inboundID)
+	url := agentURL(ip, port, fmt.Sprintf("/api/inbound/%d", inboundID))
 	body, err := c.doRequestWithRetry(url, token, 2)
 	if err != nil {
 		return nil, err
@@ -169,7 +176,7 @@ func (c *AgentAPIClient) GetInbound(ip string, port int, token string, inboundID
 
 // GetClients 获取客户端列表
 func (c *AgentAPIClient) GetClients(ip string, port int, token string, inboundID int) (*AgentAPIClients, error) {
-	url := fmt.Sprintf("http://%s:%d/api/clients/%d", ip, port, inboundID)
+	url := agentURL(ip, port, fmt.Sprintf("/api/clients/%d", inboundID))
 	body, err := c.doRequestWithRetry(url, token, 2)
 	if err != nil {
 		return nil, err
@@ -185,21 +192,21 @@ func (c *AgentAPIClient) GetClients(ip string, port int, token string, inboundID
 
 // Restart 重启面板
 func (c *AgentAPIClient) Restart(ip string, port int, token string) error {
-	url := fmt.Sprintf("http://%s:%d/api/restart", ip, port)
+	url := agentURL(ip, port, "/api/restart")
 	_, err := c.doRequest(url, token)
 	return err
 }
 
 // RestartXray 重启 Xray
 func (c *AgentAPIClient) RestartXray(ip string, port int, token string) error {
-	url := fmt.Sprintf("http://%s:%d/api/restart-xray", ip, port)
+	url := agentURL(ip, port, "/api/restart-xray")
 	_, err := c.doRequest(url, token)
 	return err
 }
 
 // IsAPIAvailable 检查 API 是否可用
 func (c *AgentAPIClient) IsAPIAvailable(ip string, port int, token string) bool {
-	url := fmt.Sprintf("http://%s:%d/api/status", ip, port)
+	url := agentURL(ip, port, "/api/status")
 	_, err := c.doRequest(url, token)
 	return err == nil
 }

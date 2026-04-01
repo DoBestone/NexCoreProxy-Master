@@ -42,7 +42,7 @@
             </span>
           </template>
           <template v-if="column.key === 'balance'">
-            <span class="balance">¥{{ record.balance?.toFixed(2) || '0.00' }}</span>
+            <span class="balance">${{ record.balance?.toFixed(2) || '0.00' }}</span>
           </template>
           <template v-if="column.key === 'traffic'">
             <div class="traffic-cell">
@@ -128,7 +128,7 @@
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="余额">
-              <a-input-number v-model:value="form.balance" :min="0" :precision="2" style="width: 100%" addon-before="¥" />
+              <a-input-number v-model:value="form.balance" :min="0" :precision="2" style="width: 100%" addon-before="$" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -158,7 +158,7 @@
         </div>
         <div class="recharge-row">
           <span class="label">当前余额</span>
-          <span class="value balance">¥{{ currentUser?.balance?.toFixed(2) || '0.00' }}</span>
+          <span class="value balance">${{ currentUser?.balance?.toFixed(2) || '0.00' }}</span>
         </div>
         <div class="recharge-row">
           <span class="label">充值金额</span>
@@ -167,7 +167,7 @@
             :min="0" 
             :precision="2"
             style="width: 150px" 
-            addon-before="¥" 
+            addon-before="$" 
           />
         </div>
       </div>

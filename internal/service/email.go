@@ -202,7 +202,7 @@ func (s *EmailService) getTemplate(name string) (*template.Template, error) {
 <div style="background: #f8fafc; border-radius: 12px; padding: 24px; margin: 24px 0;">
 <p style="color: #262626; font-size: 16px; margin: 0 0 12px;">订单号：<strong>{{.OrderNo}}</strong></p>
 <p style="color: #262626; font-size: 16px; margin: 0 0 12px;">套餐：<strong>{{.PackageName}}</strong></p>
-<p style="color: #ff4d4f; font-size: 20px; margin: 0;">金额：¥{{.Amount}}</p>
+<p style="color: #ff4d4f; font-size: 20px; margin: 0;">金额：${{.Amount}}</p>
 </div>
 <p style="color: #8c8c8c; font-size: 14px;">请及时完成支付，如有问题请联系客服。</p>
 <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">

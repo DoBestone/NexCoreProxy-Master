@@ -40,7 +40,7 @@
     </div>
     
     <!-- 节点列表卡片 -->
-    <a-card class="nodes-card">
+    <a-card class="nodes-card" title="节点列表">
       <template #extra>
         <a-switch v-model:checked="autoRefresh" checked-children="自动刷新" un-checked-children="手动" />
       </template>

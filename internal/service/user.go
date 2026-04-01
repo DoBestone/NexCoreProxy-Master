@@ -5,13 +5,20 @@ import (
 	"os"
 	"time"
 
+	"nexcoreproxy-master/internal/model"
+
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"nexcoreproxy-master/internal/model"
+	"gorm.io/gorm"
 )
 
-// JWT密钥 (生产环境应该从配置读取)
-var jwtSecret = []byte("nexcore-proxy-secret-key-2026")
+// JWT密钥：优先从环境变量读取，未设置则使用固定密钥（避免重启后会话失效）
+var jwtSecret = func() []byte {
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		return []byte(secret)
+	}
+	return []byte("nexcore-proxy-default-jwt-secret-key-2026")
+}()
 
 // Claims JWT声明
 type Claims struct {
@@ -155,58 +162,64 @@ func (s *UserService) InitAdmin() error {
 
 // PurchasePackage 用户购买套餐
 func (s *UserService) PurchasePackage(userID, packageID uint) error {
-	// 获取套餐信息
-	var pkg model.Package
-	if err := model.GetDB().First(&pkg, packageID).Error; err != nil {
-		return errors.New("套餐不存在")
-	}
+	db := model.GetDB()
 
-	// 获取用户信息
-	var user model.User
-	if err := model.GetDB().First(&user, userID).Error; err != nil {
-		return errors.New("用户不存在")
-	}
-
-	// 检查余额
-	if user.Balance < pkg.Price {
-		return errors.New("余额不足")
-	}
-
-	// 扣除余额
-	user.Balance -= pkg.Price
-
-	// 设置流量限制
-	if pkg.Traffic > 0 {
-		user.TrafficLimit = pkg.Traffic
-	}
-
-	// 设置到期时间
-	if pkg.Duration > 0 {
-		expireAt := time.Now().AddDate(0, 0, pkg.Duration)
-		user.ExpireAt = &expireAt
-	}
-
-	// 保存用户
-	if err := model.GetDB().Save(&user).Error; err != nil {
-		return err
-	}
-
-	// 分配节点 (简化处理：分配所有启用节点)
-	var nodes []model.Node
-	model.GetDB().Where("enable = ?", true).Find(&nodes)
-
-	for _, node := range nodes {
-		userNode := model.UserNode{
-			UserID: userID,
-			NodeID: node.ID,
-			Enable: true,
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 获取套餐信息
+		var pkg model.Package
+		if err := tx.First(&pkg, packageID).Error; err != nil {
+			return errors.New("套餐不存在")
 		}
+
+		// 获取用户信息（加锁防止并发扣款）
+		var user model.User
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, userID).Error; err != nil {
+			return errors.New("用户不存在")
+		}
+
+		// 检查余额
+		if user.Balance < pkg.Price {
+			return errors.New("余额不足")
+		}
+
+		// 扣除余额
+		user.Balance -= pkg.Price
+
+		// 设置流量限制
+		if pkg.Traffic > 0 {
+			user.TrafficLimit = pkg.Traffic
+		}
+
+		// 设置到期时间
 		if pkg.Duration > 0 {
 			expireAt := time.Now().AddDate(0, 0, pkg.Duration)
-			userNode.ExpireAt = &expireAt
+			user.ExpireAt = &expireAt
 		}
-		model.GetDB().Create(&userNode)
-	}
 
-	return nil
+		// 保存用户
+		if err := tx.Save(&user).Error; err != nil {
+			return err
+		}
+
+		// 分配节点 (简化处理：分配所有启用节点)
+		var nodes []model.Node
+		tx.Where("enable = ?", true).Find(&nodes)
+
+		for _, node := range nodes {
+			userNode := model.UserNode{
+				UserID: userID,
+				NodeID: node.ID,
+				Enable: true,
+			}
+			if pkg.Duration > 0 {
+				expireAt := time.Now().AddDate(0, 0, pkg.Duration)
+				userNode.ExpireAt = &expireAt
+			}
+			if err := tx.Create(&userNode).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }

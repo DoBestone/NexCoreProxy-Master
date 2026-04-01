@@ -2,11 +2,12 @@ package service
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"regexp"
@@ -15,8 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/ssh"
 	"nexcoreproxy-master/internal/model"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // NodeService 节点服务
@@ -43,10 +45,17 @@ type NodeClient struct {
 	ExpireAt time.Time
 }
 
-// GetAll 获取所有节点
+// GetAll 获取所有启用的节点
 func (s *NodeService) GetAll() ([]model.Node, error) {
 	var nodes []model.Node
 	err := model.GetDB().Where("enable = ?", true).Find(&nodes).Error
+	return nodes, err
+}
+
+// GetAllAdmin 获取所有节点（包括禁用的，管理员用）
+func (s *NodeService) GetAllAdmin() ([]model.Node, error) {
+	var nodes []model.Node
+	err := model.GetDB().Find(&nodes).Error
 	return nodes, err
 }
 
@@ -77,7 +86,7 @@ func (s *NodeService) Delete(id uint) error {
 	return model.GetDB().Delete(&model.Node{}, id).Error
 }
 
-// Install SSH自动安装x-ui
+// Install SSH自动安装 NexCoreProxy Panel (内置 3x-ui + NCP)
 func (s *NodeService) Install(id uint) error {
 	node, err := s.GetByID(id)
 	if err != nil {
@@ -90,44 +99,31 @@ func (s *NodeService) Install(id uint) error {
 	}
 	defer sshClient.Close()
 
-	// 生成随机端口（10000-65000）
-	port := 10000 + rand.Intn(55000)
-
-	// 生成随机用户名（8位）
+	// 生成随机凭据
+	port := 10000 + secureRandomInt(55000)
 	user := generateRandomString(8)
-
-	// 生成随机密码（16位）
 	password := generateRandomString(16)
 
-	// 使用 NexCoreProxy Agent 安装脚本
+	// 一条命令完成：下载 + 清理旧装 + 安装 + 配置端口/账号/密码 + 生成 Token + 启动
 	installCmd := fmt.Sprintf(
-		`bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -p %d -u %s -pass '%s'`,
-		port, user, password,
+		`bash <(curl -fsSL https://raw.githubusercontent.com/DoBestone/NexCoreProxy/main/Panel/install.sh) --force -p %d -u '%s' -k '%s'`,
+		port, shellEscape(user), shellEscape(password),
 	)
-
 	output, err := s.sshRun(sshClient, installCmd)
 	if err != nil {
 		return fmt.Errorf("安装失败: %v, 输出: %s", err, output)
 	}
 
-	// 等待服务启动
-	time.Sleep(5 * time.Second)
+	// 等待服务完全启动
+	time.Sleep(3 * time.Second)
 
-	// 获取 API Token (直接从文件读取，只取有效的 32 字符 token)
-	apiTokenOutput, _ := s.SSHRun(sshClient, "cat /usr/local/x-ui/API_TOKEN 2>/dev/null")
-	// 提取有效的 token（32 字符的字母数字字符串）
-	lines := strings.Split(apiTokenOutput, "\n")
-	var apiToken string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// 匹配 32 字符的字母数字 token
-		if len(line) == 32 {
-			matched, _ := regexp.MatchString("^[a-zA-Z0-9]{32}$", line)
-			if matched {
-				apiToken = line
-				break
-			}
-		}
+	// 读取 API Token
+	apiTokenOutput, _ := s.SSHRun(sshClient, "ncp-agent get-token 2>/dev/null")
+	apiToken := strings.TrimSpace(apiTokenOutput)
+	if len(apiToken) != 32 {
+		apiToken = ""
+	} else if matched, _ := regexp.MatchString("^[a-zA-Z0-9]{32}$", apiToken); !matched {
+		apiToken = ""
 	}
 
 	// 更新节点信息
@@ -139,6 +135,7 @@ func (s *NodeService) Install(id uint) error {
 	}
 	if apiToken != "" {
 		updates["api_token"] = apiToken
+		updates["api_port"] = 54322
 	}
 
 	err = model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(updates).Error
@@ -149,14 +146,21 @@ func (s *NodeService) Install(id uint) error {
 	return nil
 }
 
-// generateRandomString 生成随机字符串
+// generateRandomString 生成加密安全的随机字符串
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		b[i] = charset[n.Int64()]
 	}
 	return string(b)
+}
+
+// secureRandomInt 生成加密安全的随机整数
+func secureRandomInt(max int) int {
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	return int(n.Int64())
 }
 
 // SSHConnect SSH连接 (公开方法)
@@ -165,12 +169,19 @@ func (s *NodeService) SSHConnect(host string, port int, user, password string) (
 		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(password),
+			ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i := range questions {
+					answers[i] = password
+				}
+				return answers, nil
+			}),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         30 * time.Second,
 	}
 
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	return ssh.Dial("tcp", addr, config)
 }
 
@@ -203,7 +214,7 @@ func (s *NodeService) TestConnection(id uint) error {
 	}
 
 	// 简单的 TCP 连接测试，不依赖面板凭据
-	addr := fmt.Sprintf("%s:%d", node.IP, node.Port)
+	addr := net.JoinHostPort(node.IP, strconv.Itoa(node.Port))
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("连接失败: %v", err)
@@ -262,6 +273,11 @@ func (s *NodeService) syncStatusViaAPI(node *model.Node) (*NodeStatus, error) {
 		DownloadTotal: apiStatus.Data.DownloadTotal,
 	}
 
+	// 如果所有关键指标为 0，说明响应格式可能不兼容（旧版 ncp-api 用 "obj" 而非 "data"）
+	if status.CPU == 0 && status.Memory == 0 && status.Disk == 0 && status.Uptime == 0 {
+		return nil, fmt.Errorf("API 返回数据为空，可能格式不兼容")
+	}
+
 	// 更新数据库
 	now := time.Now()
 	model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
@@ -284,7 +300,7 @@ func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 	sshClient, err := s.SSHConnect(node.IP, node.SSHPort, node.SSHUser, node.SSHPassword)
 	if err != nil {
 		model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
-			"status":      "offline",
+			"status":       "offline",
 			"last_sync_at": time.Now(),
 		})
 		return nil, fmt.Errorf("SSH连接失败: %v", err)
@@ -295,7 +311,7 @@ func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 	output, err := s.SSHRun(sshClient, "ncp-agent info 2>/dev/null || echo 'error'")
 	if err != nil || strings.Contains(output, "error") {
 		model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
-			"status":      "offline",
+			"status":       "offline",
 			"last_sync_at": time.Now(),
 		})
 		return nil, fmt.Errorf("获取状态失败")
@@ -311,17 +327,19 @@ func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 		}
 	}
 
-	// 获取系统资源
-	cpuOutput, _ := s.SSHRun(sshClient, "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1 || echo 0")
+	// 获取系统资源（通过 /proc 读取，比 top 更可靠）
+	cpuCmd := `cat /proc/stat | head -1 | awk '{idle=$5; total=0; for(i=2;i<=NF;i++) total+=$i; printf "%.1f", (1-idle/total)*100}'`
+	cpuOutput, _ := s.SSHRun(sshClient, cpuCmd)
 	status.CPU, _ = strconv.ParseFloat(strings.TrimSpace(cpuOutput), 64)
 
-	memOutput, _ := s.SSHRun(sshClient, "free | grep Mem | awk '{printf \"%.1f\", $3/$2 * 100}'")
+	memCmd := `awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{if(t>0) printf "%.1f", (t-a)/t*100}' /proc/meminfo`
+	memOutput, _ := s.SSHRun(sshClient, memCmd)
 	status.Memory, _ = strconv.ParseFloat(strings.TrimSpace(memOutput), 64)
 
-	diskOutput, _ := s.SSHRun(sshClient, "df -h / | tail -1 | awk '{print $5}' | cut -d'%' -f1")
+	diskOutput, _ := s.SSHRun(sshClient, "df / | tail -1 | awk '{print $5}' | tr -d '%'")
 	status.Disk, _ = strconv.ParseFloat(strings.TrimSpace(diskOutput), 64)
 
-	uptimeOutput, _ := s.SSHRun(sshClient, "cat /proc/uptime | awk '{print int($1)}'")
+	uptimeOutput, _ := s.SSHRun(sshClient, "awk '{print int($1)}' /proc/uptime")
 	uptime, _ := strconv.ParseInt(strings.TrimSpace(uptimeOutput), 10, 64)
 	status.Uptime = uint64(uptime)
 
@@ -365,7 +383,10 @@ func (s *NodeService) refreshAPIToken(node *model.Node) (string, error) {
 
 // SyncAll 同步所有节点状态
 func (s *NodeService) SyncAll() {
-	nodes, _ := s.GetAll()
+	nodes, err := s.GetAll()
+	if err != nil {
+		return
+	}
 	var wg sync.WaitGroup
 	for _, node := range nodes {
 		if !node.Enable {
@@ -380,17 +401,17 @@ func (s *NodeService) SyncAll() {
 	wg.Wait()
 }
 
-// GetInbounds 获取节点入站列表 (通过SSH)
+// GetInbounds 获取节点入站列表
 func (s *NodeService) GetInbounds(nodeID uint) ([]map[string]interface{}, error) {
 	node, err := s.GetByID(nodeID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 优先使用 HTTP API
+	// 优先使用 NCP API
 	if node.APIToken != "" {
 		inbounds, err := s.agentAPI.GetInbounds(node.IP, node.APIPort, node.APIToken)
-		if err == nil && inbounds.Success {
+		if err == nil && inbounds.Success && len(inbounds.Data) > 0 {
 			result := make([]map[string]interface{}, len(inbounds.Data))
 			for i, inbound := range inbounds.Data {
 				result[i] = map[string]interface{}{
@@ -409,19 +430,12 @@ func (s *NodeService) GetInbounds(nodeID uint) ([]map[string]interface{}, error)
 		}
 	}
 
-	// 回退到 SSH
-	sshClient, err := s.SSHConnect(node.IP, node.SSHPort, node.SSHUser, node.SSHPassword)
-	if err != nil {
-		return nil, fmt.Errorf("SSH连接失败: %v", err)
-	}
-	defer sshClient.Close()
-
-	output, err := s.SSHRun(sshClient, "ncp-agent list-inbounds")
+	// 回退到面板 API (通过 NodeClient 登录 3x-ui 获取结构化数据)
+	client, err := s.getClient(nodeID)
 	if err != nil {
 		return nil, err
 	}
-
-	return []map[string]interface{}{{"output": output}}, nil
+	return client.GetInbounds()
 }
 
 // DeleteInbound 删除入站 (通过SSH)
@@ -557,20 +571,20 @@ func (s *NodeService) SSHGetStatus(nodeID uint) (map[string]interface{}, error) 
 	user, _ := s.SSHRun(sshClient, "ncp-agent get-user 2>/dev/null || echo 'admin'")
 	info["admin_user"] = strings.TrimSpace(user)
 
-	// CPU 使用率
-	cpu, _ := s.SSHRun(sshClient, "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | cut -d'%' -f1 || echo 0")
+	// CPU 使用率（通过 /proc/stat，比 top 更可靠）
+	cpu, _ := s.SSHRun(sshClient, `cat /proc/stat | head -1 | awk '{idle=$5; total=0; for(i=2;i<=NF;i++) total+=$i; printf "%.1f", (1-idle/total)*100}'`)
 	info["cpu"], _ = strconv.ParseFloat(strings.TrimSpace(cpu), 64)
 
-	// 内存使用率
-	mem, _ := s.SSHRun(sshClient, "free | grep Mem | awk '{printf \"%.1f\", $3/$2 * 100}'")
+	// 内存使用率（通过 /proc/meminfo）
+	mem, _ := s.SSHRun(sshClient, `awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{if(t>0) printf "%.1f", (t-a)/t*100}' /proc/meminfo`)
 	info["memory"], _ = strconv.ParseFloat(strings.TrimSpace(mem), 64)
 
 	// 磁盘使用率
-	disk, _ := s.SSHRun(sshClient, "df -h / | tail -1 | awk '{print $5}' | cut -d'%' -f1")
+	disk, _ := s.SSHRun(sshClient, "df / | tail -1 | awk '{print $5}' | tr -d '%'")
 	info["disk"], _ = strconv.ParseFloat(strings.TrimSpace(disk), 64)
 
 	// 运行时间（秒）
-	uptime, _ := s.SSHRun(sshClient, "cat /proc/uptime | awk '{print int($1)}'")
+	uptime, _ := s.SSHRun(sshClient, "awk '{print int($1)}' /proc/uptime")
 	uptimeSec, _ := strconv.ParseInt(strings.TrimSpace(uptime), 10, 64)
 	info["uptime"] = uptimeSec
 	info["uptime_human"] = formatUptime(uptimeSec)
@@ -870,20 +884,19 @@ func (s *NodeService) GenerateSubscription(userID uint) (string, error) {
 }
 
 // generateLink 生成节点链接
-func (s *NodeService) generateLink(node model.Node, inbound map[string]interface{}, user model.User) string {
+func (s *NodeService) generateLink(node model.Node, inbound map[string]interface{}, _ model.User) string {
 	protocol, _ := inbound["protocol"].(string)
 	port, _ := inbound["port"].(float64)
 	remark, _ := inbound["remark"].(string)
 
 	settings, _ := json.Marshal(inbound["settings"])
-	stream, _ := json.Marshal(inbound["streamSettings"])
 
 	// 根据协议生成链接
 	switch protocol {
 	case "vmess":
-		return s.generateVMessLink(node.IP, int(port), remark, string(settings), string(stream))
+		return s.generateVMessLink(node.IP, int(port), remark, string(settings))
 	case "vless":
-		return s.generateVLESSLink(node.IP, int(port), remark, string(settings), string(stream))
+		return s.generateVLESSLink(node.IP, int(port), remark, string(settings))
 	case "trojan":
 		return s.generateTrojanLink(node.IP, int(port), remark, string(settings))
 	case "shadowsocks":
@@ -894,7 +907,7 @@ func (s *NodeService) generateLink(node model.Node, inbound map[string]interface
 }
 
 // generateVMessLink 生成VMess链接
-func (s *NodeService) generateVMessLink(host string, port int, remark, settings, stream string) string {
+func (s *NodeService) generateVMessLink(host string, port int, remark, settings string) string {
 	var sett struct {
 		Clients []struct {
 			ID string `json:"id"`
@@ -927,7 +940,7 @@ func (s *NodeService) generateVMessLink(host string, port int, remark, settings,
 }
 
 // generateVLESSLink 生成VLESS链接
-func (s *NodeService) generateVLESSLink(host string, port int, remark, settings, stream string) string {
+func (s *NodeService) generateVLESSLink(host string, port int, remark, settings string) string {
 	var sett struct {
 		Clients []struct {
 			ID string `json:"id"`
@@ -992,7 +1005,7 @@ type NodeStatus struct {
 
 // Login 登录节点
 func (c *NodeClient) Login() error {
-	url := fmt.Sprintf("http://%s:%d/login", c.IP, c.Port)
+	loginURL := fmt.Sprintf("http://%s/login", net.JoinHostPort(c.IP, strconv.Itoa(c.Port)))
 
 	data := map[string]string{
 		"username": c.Username,
@@ -1000,7 +1013,8 @@ func (c *NodeClient) Login() error {
 	}
 	jsonData, _ := json.Marshal(data)
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	resp, err := httpClient.Post(loginURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("连接节点失败: %v", err)
 	}
@@ -1019,9 +1033,9 @@ func (c *NodeClient) Login() error {
 		return fmt.Errorf("登录失败: %s", result.Msg)
 	}
 
-	// 从 Cookie 中获取 session
+	// 从 Cookie 中获取 session（3x-ui 使用 "3x-ui" 作为 cookie 名）
 	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "session" {
+		if cookie.Name == "3x-ui" || cookie.Name == "session" {
 			c.Token = cookie.Value
 			break
 		}
@@ -1037,7 +1051,7 @@ func (c *NodeClient) Login() error {
 
 // Request 发送 API 请求
 func (c *NodeClient) Request(method, path string, data interface{}) ([]byte, error) {
-	url := fmt.Sprintf("http://%s:%d%s", c.IP, c.Port, path)
+	url := fmt.Sprintf("http://%s%s", net.JoinHostPort(c.IP, strconv.Itoa(c.Port)), path)
 
 	var body io.Reader
 	if data != nil {
@@ -1053,7 +1067,7 @@ func (c *NodeClient) Request(method, path string, data interface{}) ([]byte, err
 	req.Header.Set("Content-Type", "application/json")
 	if c.Token != "" {
 		req.Header.Set("Authorization", c.Token)
-		req.AddCookie(&http.Cookie{Name: "session", Value: c.Token})
+		req.AddCookie(&http.Cookie{Name: "3x-ui", Value: c.Token})
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -1068,7 +1082,7 @@ func (c *NodeClient) Request(method, path string, data interface{}) ([]byte, err
 
 // GetStatus 获取节点状态
 func (c *NodeClient) GetStatus() (*NodeStatus, error) {
-	body, err := c.Request("POST", "/server/status", nil)
+	body, err := c.Request("GET", "/panel/api/server/status", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1125,7 +1139,7 @@ func (c *NodeClient) GetStatus() (*NodeStatus, error) {
 
 // GetInbounds 获取入站列表
 func (c *NodeClient) GetInbounds() ([]map[string]interface{}, error) {
-	body, err := c.Request("POST", "/inbound/list", nil)
+	body, err := c.Request("GET", "/panel/api/inbounds/list", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1145,7 +1159,7 @@ func (c *NodeClient) GetInbounds() ([]map[string]interface{}, error) {
 
 // AddInbound 添加入站
 func (c *NodeClient) AddInbound(inbound map[string]interface{}) error {
-	body, err := c.Request("POST", "/inbound/add", inbound)
+	body, err := c.Request("POST", "/panel/api/inbounds/add", inbound)
 	if err != nil {
 		return err
 	}
@@ -1165,7 +1179,7 @@ func (c *NodeClient) AddInbound(inbound map[string]interface{}) error {
 
 // DeleteInbound 删除入站
 func (c *NodeClient) DeleteInbound(id int) error {
-	body, err := c.Request("POST", fmt.Sprintf("/inbound/del/%d", id), nil)
+	body, err := c.Request("POST", fmt.Sprintf("/panel/api/inbounds/del/%d", id), nil)
 	if err != nil {
 		return err
 	}
@@ -1185,7 +1199,7 @@ func (c *NodeClient) DeleteInbound(id int) error {
 
 // RestartXray 重启 Xray
 func (c *NodeClient) RestartXray() error {
-	body, err := c.Request("POST", "/xray/restart", nil)
+	body, err := c.Request("POST", "/panel/api/server/restartXrayService", nil)
 	if err != nil {
 		return err
 	}
@@ -1205,6 +1219,11 @@ func (c *NodeClient) RestartXray() error {
 
 // ========== SSH 管理功能 ==========
 
+// shellEscape 转义 shell 单引号，防止命令注入
+func shellEscape(s string) string {
+	return strings.ReplaceAll(s, "'", "'\"'\"'")
+}
+
 // ResetCredentials 通过SSH重置面板账号密码
 func (s *NodeService) ResetCredentials(nodeID uint, username, password string) error {
 	node, err := s.GetByID(nodeID)
@@ -1218,13 +1237,13 @@ func (s *NodeService) ResetCredentials(nodeID uint, username, password string) e
 	}
 	defer sshClient.Close()
 
-	// 使用 ncp-agent 命令设置
-	_, err = s.SSHRun(sshClient, fmt.Sprintf("ncp-agent set-user '%s'", username))
+	// 使用 ncp-agent 命令设置（转义防注入）
+	_, err = s.SSHRun(sshClient, fmt.Sprintf("ncp-agent set-user '%s'", shellEscape(username)))
 	if err != nil {
 		return fmt.Errorf("设置用户名失败: %v", err)
 	}
 
-	_, err = s.SSHRun(sshClient, fmt.Sprintf("ncp-agent set-pass '%s'", password))
+	_, err = s.SSHRun(sshClient, fmt.Sprintf("ncp-agent set-pass '%s'", shellEscape(password)))
 	if err != nil {
 		return fmt.Errorf("设置密码失败: %v", err)
 	}
@@ -1241,7 +1260,10 @@ func (s *NodeService) ResetCredentials(nodeID uint, username, password string) e
 	return nil
 }
 
-// CheckUpdate 检查 3x-ui 面板更新
+// panelRepo 面板的 GitHub 仓库
+const panelRepo = "DoBestone/NexCoreProxy-Panel"
+
+// CheckUpdate 检查 Panel 更新（基于 DoBestone/NexCoreProxy-Panel 的 Release）
 func (s *NodeService) CheckUpdate(nodeID uint) (map[string]interface{}, error) {
 	node, err := s.GetByID(nodeID)
 	if err != nil {
@@ -1254,26 +1276,39 @@ func (s *NodeService) CheckUpdate(nodeID uint) (map[string]interface{}, error) {
 	}
 	defer sshClient.Close()
 
-	// 获取 3x-ui 最新版本
-	latestCmd := "curl -s https://api.github.com/repos/MHSanaei/3x-ui/releases/latest 2>/dev/null | grep '\"tag_name\"' | sed -E 's/.*\"([^\"]+)\".*/\\1/' || echo 'unknown'"
+	// 获取当前版本
+	currentOutput, _ := s.SSHRun(sshClient, "cat /usr/local/x-ui/VERSION 2>/dev/null")
+	currentVersion := strings.TrimSpace(currentOutput)
+	if currentVersion == "" {
+		currentVersion = "未知"
+	}
+
+	// 服务状态
+	statusOutput, _ := s.SSHRun(sshClient, "systemctl is-active x-ui 2>/dev/null || echo 'inactive'")
+
+	// 从 GitHub API 获取最新 Release
+	latestCmd := fmt.Sprintf(
+		`curl -s https://api.github.com/repos/%s/releases/latest 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/'`,
+		panelRepo,
+	)
 	latestOutput, _ := s.SSHRun(sshClient, latestCmd)
 	latestVersion := strings.TrimSpace(latestOutput)
 
-	// 检查 3x-ui 是否已安装
-	statusOutput, _ := s.SSHRun(sshClient, "systemctl is-active x-ui 2>/dev/null || echo 'inactive'")
-
-	// 检查当前版本
-	currentOutput, _ := s.SSHRun(sshClient, "cat /usr/local/x-ui/VERSION 2>/dev/null || echo '已安装'")
+	// 没有发布 Release 则不需要更新
+	needUpdate := false
+	if latestVersion != "" && currentVersion != "未知" && latestVersion != currentVersion {
+		needUpdate = true
+	}
 
 	return map[string]interface{}{
-		"currentVersion": strings.TrimSpace(currentOutput),
+		"currentVersion": currentVersion,
 		"latestVersion":  latestVersion,
-		"needUpdate":     latestVersion != "" && latestVersion != "unknown" && strings.TrimSpace(currentOutput) != latestVersion,
+		"needUpdate":     needUpdate,
 		"status":         strings.TrimSpace(statusOutput),
 	}, nil
 }
 
-// UpdateAgent 更新 3x-ui 面板
+// UpdateAgent 更新 Panel 到最新 Release
 func (s *NodeService) UpdateAgent(nodeID uint) (string, error) {
 	node, err := s.GetByID(nodeID)
 	if err != nil {
@@ -1286,53 +1321,57 @@ func (s *NodeService) UpdateAgent(nodeID uint) (string, error) {
 	}
 	defer sshClient.Close()
 
-	// 非交互式更新脚本
-	updateScript := `
-cd /usr/local/
+	updateScript := fmt.Sprintf(`
+set -e
+REPO="%s"
 ARCH=$(uname -m)
-if [[ "$ARCH" == "x86_64" ]]; then
-    ARCH="amd64"
-elif [[ "$ARCH" == "aarch64" ]]; then
-    ARCH="arm64"
-fi
+[[ "$ARCH" == "x86_64" ]] && ARCH="amd64"
+[[ "$ARCH" == "aarch64" ]] && ARCH="arm64"
 
-# 获取最新版本
-LATEST=$(curl -s https://api.github.com/repos/MHSanaei/3x-ui/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+# 获取最新 Release 版本
+LATEST=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 if [[ -z "$LATEST" ]]; then
-    LATEST="v2.8.11"
+    echo "错误: 仓库没有发布 Release，无法更新"
+    exit 1
 fi
 
-echo "正在更新 3x-ui 到版本: $LATEST"
+CURRENT=$(cat /usr/local/x-ui/VERSION 2>/dev/null || echo "")
+if [[ "$CURRENT" == "$LATEST" ]]; then
+    echo "当前已是最新版本: $LATEST"
+    exit 0
+fi
 
-# 备份数据库
-mkdir -p /tmp/x-ui-backup
-cp -f /usr/local/x-ui/db/x-ui.db /tmp/x-ui-backup/ 2>/dev/null || true
-cp -f /usr/local/x-ui/bin/config.json /tmp/x-ui-backup/ 2>/dev/null || true
+echo "正在更新 NexCoreProxy Panel: $CURRENT -> $LATEST"
+
+# 备份数据库和配置
+mkdir -p /tmp/ncp-backup
+cp -f /etc/x-ui/x-ui.db /tmp/ncp-backup/ 2>/dev/null || true
+cp -f /usr/local/x-ui/bin/config.json /tmp/ncp-backup/ 2>/dev/null || true
 
 # 下载新版本
-wget -q -O /tmp/x-ui-update.tar.gz "https://github.com/MHSanaei/3x-ui/releases/download/${LATEST}/x-ui-linux-${ARCH}.tar.gz" || {
-    echo "下载失败"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST}/x-ui-linux-${ARCH}.tar.gz"
+wget -q -O /tmp/x-ui-update.tar.gz "$DOWNLOAD_URL" || {
+    echo "下载失败: $DOWNLOAD_URL"
     exit 1
 }
 
 # 停止服务
 systemctl stop x-ui 2>/dev/null || true
 
-# 解压覆盖
-rm -rf /usr/local/x-ui/x-ui
+# 解压覆盖（保留数据库）
 tar -xzf /tmp/x-ui-update.tar.gz -C /usr/local/
 rm -f /tmp/x-ui-update.tar.gz
 
-# 恢复数据库和配置
-cp -f /tmp/x-ui-backup/x-ui.db /usr/local/x-ui/db/ 2>/dev/null || true
-cp -f /tmp/x-ui-backup/config.json /usr/local/x-ui/bin/ 2>/dev/null || true
+# 恢复数据库（如果被覆盖）
+cp -f /tmp/ncp-backup/x-ui.db /etc/x-ui/ 2>/dev/null || true
 
-# 写入版本文件
+# 写入版本 & 设置权限
 echo "$LATEST" > /usr/local/x-ui/VERSION
-
-# 设置权限
 chmod +x /usr/local/x-ui/x-ui
 chmod +x /usr/local/x-ui/bin/xray-linux-${ARCH} 2>/dev/null || true
+
+# 确保 ncp-agent 符号链接存在
+ln -sf /usr/local/x-ui/x-ui /usr/bin/ncp-agent
 
 # 启动服务
 systemctl daemon-reload
@@ -1340,11 +1379,12 @@ systemctl start x-ui
 
 sleep 3
 if systemctl is-active --quiet x-ui; then
-    echo "3x-ui 更新成功，版本: $LATEST"
+    echo "更新成功，版本: $LATEST"
 else
     echo "更新完成，但服务启动失败，请检查日志"
 fi
-`
+`, panelRepo)
+
 	output, err := s.SSHRun(sshClient, updateScript)
 	if err != nil {
 		return output, fmt.Errorf("更新失败: %v", err)

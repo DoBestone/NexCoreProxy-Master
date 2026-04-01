@@ -23,7 +23,7 @@
             <span class="package-name">{{ record.packageName }}</span>
           </template>
           <template v-if="column.key === 'amount'">
-            <span class="amount">¥{{ record.amount }}</span>
+            <span class="amount">${{ record.amount }}</span>
           </template>
           <template v-if="column.key === 'status'">
             <span :class="['status-badge', record.status]">
