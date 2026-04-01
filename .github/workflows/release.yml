@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }} .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build Frontend
+        run: |
+          cd web
+          npm install
+          npm run build
+      - name: Package Frontend
+        run: tar -czf frontend-dist.tar.gz -C web/dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend-dist.tar.gz
+
+  release:
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in artifacts/nexcore-master-*/; do
+            cp "$dir"/* release/ 2>/dev/null || true
+          done
+          cp artifacts/frontend-dist/frontend-dist.tar.gz release/
+          cp update.sh release/
+          chmod +x release/nexcore-master-* 2>/dev/null || true
+          chmod +x release/update.sh
+          ls -la release/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/nexcore-master-linux-amd64
+            release/nexcore-master-linux-arm64
+            release/frontend-dist.tar.gz
+            release/update.sh
+          generate_release_notes: true
