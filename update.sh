@@ -17,7 +17,7 @@ else
 fi
 
 SERVICE_NAME="nexcoreproxy-master"
-GITHUB_REPO="DoBestone/NexCoreProxy"
+GITHUB_REPO="DoBestone/NexCoreProxy-Master"
 BINARY_NAME="nexcore-master"
 BINARY="$SCRIPT_DIR/bin/${BINARY_NAME}"
 ENV_FILE="$SCRIPT_DIR/.env"
@@ -114,6 +114,11 @@ _stop_service() {
   fi
   if [ "$OS" = "linux" ] && command -v systemctl &>/dev/null; then
     sudo systemctl stop "$SERVICE_NAME" --no-block 2>/dev/null || true
+  elif [ "$OS" = "darwin" ]; then
+    local plist="$HOME/Library/LaunchAgents/com.nexcoreproxy-master.plist"
+    if [ -f "$plist" ]; then
+      launchctl unload "$plist" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -129,8 +134,26 @@ _start_service() {
     else
       err "服务启动失败，请检查日志: journalctl -u ${SERVICE_NAME} -n 50"
     fi
+  elif [ "$OS" = "darwin" ]; then
+    local plist="$HOME/Library/LaunchAgents/com.nexcoreproxy-master.plist"
+    if [ -f "$plist" ]; then
+      launchctl load "$plist"
+      ok "LaunchAgent 已重新加载"
+    else
+      cd "$SCRIPT_DIR"
+      mkdir -p "$SCRIPT_DIR/logs"
+      nohup "$BINARY" >> "$SCRIPT_DIR/logs/server.log" 2>&1 &
+      local NEW_PID=$!
+      sleep 2
+      if kill -0 "$NEW_PID" 2>/dev/null; then
+        ok "服务已启动 (PID: ${NEW_PID})"
+      else
+        err "服务启动失败，请检查日志: $SCRIPT_DIR/logs/server.log"
+      fi
+    fi
   else
     cd "$SCRIPT_DIR"
+    mkdir -p "$SCRIPT_DIR/logs"
     nohup "$BINARY" >> "$SCRIPT_DIR/logs/server.log" 2>&1 &
     local NEW_PID=$!
     sleep 2
