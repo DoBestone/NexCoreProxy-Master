@@ -8,15 +8,21 @@ import (
 	"os/signal"
 	"syscall"
 
+	"nexcoreproxy-master/internal/handler"
 	"nexcoreproxy-master/internal/model"
 	"nexcoreproxy-master/internal/service"
 	"nexcoreproxy-master/web"
 )
 
 var (
-	version   = "1.0.0"
+	version   = "1.1.0"
 	buildTime = "unknown"
 )
+
+func init() {
+	// 同步版本号到 handler 包（供在线更新使用）
+	handler.AppVersion = version
+}
 
 func main() {
 	var showVersion bool

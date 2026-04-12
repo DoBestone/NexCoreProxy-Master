@@ -4,7 +4,7 @@ import request from './request'
 export const login = (data) => request.post('/login', data)
 export const register = (data) => request.post('/register', data)
 export const logout = () => request.post('/logout')
-export const getUserInfo = () => request.get('/userinfo')
+export const getUserInfo = () => request.get('/user/info')
 export const updatePassword = (data) => request.put('/user/password', data)
 
 // ========== 公开接口 ==========
@@ -91,3 +91,14 @@ export const testEmail = (email) => request.post('/admin/email-test', { email })
 
 // 统计
 export const getStatsOverview = () => request.get('/stats/overview')
+
+// 系统更新
+export const systemUpdate = {
+  version: () => request.get('/system/version'),
+  updateCheck: () => request.get('/system/update-check'),
+  changelog: () => request.get('/system/changelog'),
+  updatePrepare: () => request.post('/system/update-prepare'),
+  update: (data) => request.post('/system/update', data),
+  getConfig: () => request.get('/system/proxy-config'),
+  saveConfig: (data) => request.put('/system/proxy-config', data),
+}

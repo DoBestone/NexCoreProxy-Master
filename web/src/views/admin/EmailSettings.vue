@@ -6,60 +6,28 @@
         <MailOutlined class="title-icon" />
         邮件配置
       </h1>
-      <p class="page-desc">配置SMTP邮件服务，用于发送通知邮件</p>
+      <p class="page-desc">配置 SMTP Lite API 邮件服务，用于发送通知邮件</p>
     </div>
-    
+
     <!-- 配置卡片 -->
     <a-card class="config-card">
       <a-form :model="form" layout="vertical" class="email-form">
-        <a-row :gutter="24">
-          <a-col :span="12">
-            <a-form-item label="SMTP服务器" required>
-              <a-input v-model:value="form.host" placeholder="smtp.example.com" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item label="端口">
-              <a-input-number v-model:value="form.port" :min="1" :max="65535" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item label="使用TLS">
-              <a-switch v-model:checked="form.useTLS" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        
-        <a-row :gutter="24">
-          <a-col :span="12">
-            <a-form-item label="用户名">
-              <a-input v-model:value="form.username" placeholder="SMTP用户名" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="密码">
-              <a-input-password v-model:value="form.password" placeholder="SMTP密码" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        
-        <a-row :gutter="24">
-          <a-col :span="12">
-            <a-form-item label="发件人邮箱">
-              <a-input v-model:value="form.from" placeholder="noreply@example.com" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="发件人名称">
-              <a-input v-model:value="form.fromName" placeholder="NexCore代理主机" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        
+        <a-form-item label="API 地址" required>
+          <a-input v-model:value="form.apiUrl" placeholder="https://smtp-lite.nexcores.net" />
+        </a-form-item>
+
+        <a-form-item label="API Key" required>
+          <a-input-password v-model:value="form.apiKey" placeholder="smtp_xxxxxxxxxxxx" />
+        </a-form-item>
+
+        <a-form-item label="发件人名称">
+          <a-input v-model:value="form.fromName" placeholder="NexCore代理主机" />
+        </a-form-item>
+
         <a-form-item>
           <a-checkbox v-model:checked="form.enable">启用邮件服务</a-checkbox>
         </a-form-item>
-        
+
         <a-form-item>
           <a-space>
             <a-button type="primary" @click="saveConfig" :loading="saving">
@@ -72,67 +40,41 @@
         </a-form-item>
       </a-form>
     </a-card>
-    
+
     <!-- 使用说明 -->
     <a-card class="help-card">
       <template #title>
         <InfoCircleOutlined /> 配置说明
       </template>
       <div class="help-content">
-        <h4>常见SMTP配置</h4>
-        <table class="smtp-table">
-          <thead>
-            <tr>
-              <th>服务商</th>
-              <th>服务器</th>
-              <th>端口</th>
-              <th>TLS</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>QQ邮箱</td>
-              <td>smtp.qq.com</td>
-              <td>587</td>
-              <td>是</td>
-            </tr>
-            <tr>
-              <td>163邮箱</td>
-              <td>smtp.163.com</td>
-              <td>465</td>
-              <td>是</td>
-            </tr>
-            <tr>
-              <td>阿里企业邮箱</td>
-              <td>smtp.mxhichina.com</td>
-              <td>465</td>
-              <td>是</td>
-            </tr>
-            <tr>
-              <td>Gmail</td>
-              <td>smtp.gmail.com</td>
-              <td>587</td>
-              <td>是</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <a-alert 
-          type="info" 
-          show-icon 
+        <h4>SMTP Lite API</h4>
+        <p>系统使用 SMTP Lite API 统一发送邮件，自动轮询可用 SMTP 账号，无需自行配置 SMTP 服务器。</p>
+
+        <h4 style="margin-top: 16px;">配置步骤</h4>
+        <ol style="color: #595959; line-height: 2;">
+          <li>填写 API 地址（默认：https://smtp-lite.nexcores.net）</li>
+          <li>填写 API Key（在 SMTP Lite 管理后台创建）</li>
+          <li>设置发件人显示名称</li>
+          <li>勾选"启用邮件服务"</li>
+          <li>点击"发送测试邮件"验证配置</li>
+        </ol>
+
+        <a-alert
+          type="info"
+          show-icon
           style="margin-top: 16px"
         >
           <template #message>
-            <strong>注意：</strong>部分邮箱服务商需要开启SMTP服务并获取授权码，而非使用登录密码。
+            API Key 仅在创建时完整展示一次，请妥善保存。
           </template>
         </a-alert>
       </div>
     </a-card>
 
     <!-- 测试邮件弹窗 -->
-    <a-modal 
-      v-model:open="testVisible" 
-      title="发送测试邮件" 
+    <a-modal
+      v-model:open="testVisible"
+      title="发送测试邮件"
       @ok="sendTestEmail"
       :confirmLoading="testing"
     >
@@ -157,13 +99,9 @@ const testVisible = ref(false)
 const testEmailAddress = ref('')
 
 const form = ref({
-  host: '',
-  port: 587,
-  username: '',
-  password: '',
-  from: '',
+  apiUrl: 'https://smtp-lite.nexcores.net',
+  apiKey: '',
   fromName: 'NexCore代理主机',
-  useTLS: true,
   enable: false
 })
 
@@ -171,7 +109,7 @@ const fetchConfig = async () => {
   try {
     const res = await getEmailConfig()
     if (res.success && res.obj) {
-      form.value = { ...res.obj }
+      form.value = { ...form.value, ...res.obj }
     }
   } catch (e) {
     // 忽略
@@ -179,11 +117,11 @@ const fetchConfig = async () => {
 }
 
 const saveConfig = async () => {
-  if (!form.value.host) {
-    message.warning('请填写SMTP服务器地址')
+  if (!form.value.apiUrl) {
+    message.warning('请填写 API 地址')
     return
   }
-  
+
   saving.value = true
   try {
     await updateEmailConfig(form.value)
@@ -263,28 +201,15 @@ onMounted(() => {
   font-weight: 500;
 }
 
-/* SMTP配置表格 */
-.smtp-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.smtp-table th,
-.smtp-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.smtp-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  color: #595959;
-}
-
-.smtp-table td {
+.help-content h4 {
   color: #262626;
+  margin-bottom: 8px;
+}
+
+.help-content p {
+  color: #595959;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 @keyframes fadeIn {

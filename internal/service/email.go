@@ -2,147 +2,116 @@ package service
 
 import (
 	"bytes"
-	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"html/template"
-	"net/smtp"
+	"io"
+	"net/http"
 	"os"
+	"time"
 )
 
-// EmailConfig 邮件配置
-type EmailConfig struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
-	FromName string
-	UseTLS   bool
-}
-
-// EmailService 邮件服务
+// EmailService 邮件服务 (基于 SMTP Lite API)
 type EmailService struct {
-	config *EmailConfig
+	apiURL   string // SMTP Lite API 地址
+	apiKey   string // API Key
+	fromName string // 发件人名称
 }
 
 // NewEmailService 创建邮件服务
 func NewEmailService() *EmailService {
 	return &EmailService{
-		config: &EmailConfig{
-			Host:     os.Getenv("SMTP_HOST"),
-			Port:     587,
-			Username: os.Getenv("SMTP_USER"),
-			Password: os.Getenv("SMTP_PASS"),
-			From:     os.Getenv("SMTP_FROM"),
-			FromName: os.Getenv("SMTP_FROM_NAME"),
-			UseTLS:   true,
-		},
+		apiURL:   os.Getenv("SMTP_API_URL"),
+		apiKey:   os.Getenv("SMTP_API_KEY"),
+		fromName: os.Getenv("SMTP_FROM_NAME"),
 	}
 }
 
 // LoadConfig 从数据库加载配置
-func (s *EmailService) LoadConfig(host string, port int, username, password, from, fromName string, useTLS bool) {
-	s.config = &EmailConfig{
-		Host:     host,
-		Port:     port,
-		Username: username,
-		Password: password,
-		From:     from,
-		FromName: fromName,
-		UseTLS:   useTLS,
-	}
+func (s *EmailService) LoadConfig(apiURL, apiKey, fromName string) {
+	s.apiURL = apiURL
+	s.apiKey = apiKey
+	s.fromName = fromName
 }
 
-// Send 发送邮件
+// sendRequest SMTP Lite API 请求体
+type sendRequest struct {
+	To       string `json:"to"`
+	Subject  string `json:"subject"`
+	Body     string `json:"body"`
+	IsHTML   bool   `json:"is_html"`
+	FromName string `json:"from_name,omitempty"`
+}
+
+// sendResponse SMTP Lite API 响应体
+type sendResponse struct {
+	Success  bool   `json:"success"`
+	Message  string `json:"message"`
+	UsedSMTP string `json:"used_smtp"`
+}
+
+// Send 通过 SMTP Lite API 发送邮件
 func (s *EmailService) Send(to, subject, body string) error {
-	if s.config.Host == "" {
+	return s.sendMail(to, subject, body, true)
+}
+
+// SendText 发送纯文本邮件
+func (s *EmailService) SendText(to, subject, body string) error {
+	return s.sendMail(to, subject, body, false)
+}
+
+func (s *EmailService) sendMail(to, subject, body string, isHTML bool) error {
+	if s.apiURL == "" || s.apiKey == "" {
 		return fmt.Errorf("邮件服务未配置")
 	}
 
-	from := s.config.From
-	if from == "" {
-		from = s.config.Username
+	reqBody := sendRequest{
+		To:       to,
+		Subject:  subject,
+		Body:     body,
+		IsHTML:   isHTML,
+		FromName: s.fromName,
 	}
 
-	// 构建邮件头
-	headers := make(map[string]string)
-	headers["From"] = fmt.Sprintf("%s <%s>", s.config.FromName, from)
-	headers["To"] = to
-	headers["Subject"] = subject
-	headers["MIME-Version"] = "1.0"
-	headers["Content-Type"] = "text/html; charset=UTF-8"
-
-	// 组装邮件
-	var msg bytes.Buffer
-	for k, v := range headers {
-		msg.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
-	}
-	msg.WriteString("\r\n")
-	msg.WriteString(body)
-
-	// 发送邮件
-	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
-
-	var auth smtp.Auth
-	if s.config.Username != "" {
-		auth = smtp.PlainAuth("", s.config.Username, s.config.Password, s.config.Host)
-	}
-
-	if s.config.UseTLS {
-		return s.sendWithTLS(addr, auth, from, []string{to}, msg.Bytes())
-	}
-
-	return smtp.SendMail(addr, auth, from, []string{to}, msg.Bytes())
-}
-
-// sendWithTLS 使用TLS发送邮件
-func (s *EmailService) sendWithTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
-	conn, err := tls.Dial("tcp", addr, &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         s.config.Host,
-	})
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("TLS连接失败: %v", err)
+		return fmt.Errorf("序列化请求失败: %v", err)
 	}
-	defer conn.Close()
 
-	client, err := smtp.NewClient(conn, s.config.Host)
+	url := s.apiURL + "/api/v1/send"
+	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonData))
 	if err != nil {
-		return fmt.Errorf("创建SMTP客户端失败: %v", err)
+		return fmt.Errorf("创建请求失败: %v", err)
 	}
-	defer client.Close()
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", s.apiKey)
 
-	if auth != nil {
-		if err := client.Auth(auth); err != nil {
-			return fmt.Errorf("SMTP认证失败: %v", err)
-		}
-	}
-
-	if err := client.Mail(from); err != nil {
-		return fmt.Errorf("设置发件人失败: %v", err)
-	}
-
-	for _, addr := range to {
-		if err := client.Rcpt(addr); err != nil {
-			return fmt.Errorf("设置收件人失败: %v", err)
-		}
-	}
-
-	w, err := client.Data()
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("准备邮件数据失败: %v", err)
+		return fmt.Errorf("请求 SMTP Lite API 失败: %v", err)
 	}
+	defer resp.Body.Close()
 
-	_, err = w.Write(msg)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("写入邮件内容失败: %v", err)
+		return fmt.Errorf("读取响应失败: %v", err)
 	}
 
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("关闭邮件写入失败: %v", err)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("SMTP Lite API 返回 %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	return client.Quit()
+	var result sendResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("发送失败: %s", result.Message)
+	}
+
+	return nil
 }
 
 // SendWithTemplate 使用模板发送邮件
@@ -163,8 +132,7 @@ func (s *EmailService) SendWithTemplate(to, subject, templateName string, data i
 // getTemplate 获取邮件模板
 func (s *EmailService) getTemplate(name string) (*template.Template, error) {
 	templates := map[string]string{
-		"welcome": `
-<!DOCTYPE html>
+		"welcome": `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; padding: 40px;">
@@ -188,8 +156,7 @@ func (s *EmailService) getTemplate(name string) (*template.Template, error) {
 </div>
 </body>
 </html>`,
-		"order": `
-<!DOCTYPE html>
+		"order": `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; padding: 40px;">
@@ -211,8 +178,7 @@ func (s *EmailService) getTemplate(name string) (*template.Template, error) {
 </div>
 </body>
 </html>`,
-		"ticket_reply": `
-<!DOCTYPE html>
+		"ticket_reply": `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; padding: 40px;">
@@ -247,5 +213,5 @@ func (s *EmailService) getTemplate(name string) (*template.Template, error) {
 
 // IsConfigured 检查是否已配置
 func (s *EmailService) IsConfigured() bool {
-	return s.config != nil && s.config.Host != ""
+	return s.apiURL != "" && s.apiKey != ""
 }

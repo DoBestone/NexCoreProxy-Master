@@ -49,6 +49,7 @@ func AutoMigrate() error {
 		&TrafficLog{},
 		&Announcement{},
 		&EmailConfig{},
+		&NexCoreConfig{},
 	)
 }
 
@@ -57,16 +58,16 @@ type User struct {
 	ID           uint       `json:"id" gorm:"primaryKey"`
 	Username     string     `json:"username" gorm:"uniqueIndex;size:50"`
 	Password     string     `json:"-" gorm:"size:255"`
-	Email        string     `json:"email" gorm:"size:100"`
-	Role         string     `json:"role" gorm:"size:20;default:'user'"` // admin, user
-	Balance      float64    `json:"balance" gorm:"default:0"`           // 余额
-	TrafficLimit int64      `json:"trafficLimit"`                       // 流量限制 (字节)
-	TrafficUsed  int64      `json:"trafficUsed"`                        // 已用流量
-	ExpireAt     *time.Time `json:"expireAt"`                           // 到期时间
-	Enable       bool       `json:"enable" gorm:"default:true"`
+	Email        string     `json:"email" gorm:"size:100;index"`
+	Role         string     `json:"role" gorm:"size:20;default:'user';index"` // admin, user
+	Balance      float64    `json:"balance" gorm:"default:0"`                 // 余额
+	TrafficLimit int64      `json:"trafficLimit"`                             // 流量限制 (字节)
+	TrafficUsed  int64      `json:"trafficUsed"`                              // 已用流量
+	ExpireAt     *time.Time `json:"expireAt"`                                 // 到期时间
+	Enable       bool       `json:"enable" gorm:"default:true;index"`
 	Remark       string     `json:"remark" gorm:"size:255"`
-	InviteCode   string     `json:"inviteCode" gorm:"size:20"` // 邀请码
-	InvitedBy    uint       `json:"invitedBy"`                 // 邀请人ID
+	InviteCode   string     `json:"inviteCode" gorm:"size:20;uniqueIndex"` // 邀请码
+	InvitedBy    uint       `json:"invitedBy"`                             // 邀请人ID
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
 }
@@ -83,16 +84,12 @@ type Announcement struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// EmailConfig 邮件配置模型
+// EmailConfig 邮件配置模型 (SMTP Lite API)
 type EmailConfig struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
-	Host      string    `json:"host" gorm:"size:100"`
-	Port      int       `json:"port"`
-	Username  string    `json:"username" gorm:"size:100"`
-	Password  string    `json:"-" gorm:"size:255"`
-	From      string    `json:"from" gorm:"size:100"`
-	FromName  string    `json:"fromName" gorm:"size:100"`
-	UseTLS    bool      `json:"useTLS" gorm:"default:true"`
+	APIURL    string    `json:"apiUrl" gorm:"column:api_url;size:255"`  // SMTP Lite API 地址
+	APIKey    string    `json:"apiKey" gorm:"column:api_key;size:255"`  // API Key
+	FromName  string    `json:"fromName" gorm:"size:100"`               // 发件人名称
 	Enable    bool      `json:"enable" gorm:"default:false"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -124,19 +121,20 @@ type Node struct {
 	UploadTotal   int64      `json:"uploadTotal"`
 	DownloadTotal int64      `json:"downloadTotal"`
 	LastSyncAt    *time.Time `json:"lastSyncAt"`
-	Connected     bool       `json:"connected" gorm:"-"` // 是否在线（运行时）
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	HostKeyFingerprint string `json:"-" gorm:"size:100"` // SSH 主机密钥指纹 (TOFU)
+	Connected          bool   `json:"connected" gorm:"-"` // 是否在线（运行时）
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 // UserNode 用户节点关联
 type UserNode struct {
 	ID        uint       `json:"id" gorm:"primaryKey"`
-	UserID    uint       `json:"userId" gorm:"index"`
+	UserID    uint       `json:"userId" gorm:"index:idx_user_enable"`
 	NodeID    uint       `json:"nodeId" gorm:"index"`
 	InboundID int        `json:"inboundId"`
 	Remark    string     `json:"remark" gorm:"size:100"`
-	Enable    bool       `json:"enable" gorm:"default:true"`
+	Enable    bool       `json:"enable" gorm:"default:true;index:idx_user_enable"`
 	ExpireAt  *time.Time `json:"expireAt"`
 	CreatedAt time.Time  `json:"createdAt"`
 	Node      Node       `json:"node" gorm:"foreignKey:NodeID"`
@@ -180,8 +178,8 @@ type Ticket struct {
 	UserID    uint      `json:"userId" gorm:"index"`
 	Subject   string    `json:"subject" gorm:"size:200"`
 	Content   string    `json:"content" gorm:"type:text"`
-	Status    string    `json:"status" gorm:"size:20;default:'open'"` // open, closed
-	Priority  int       `json:"priority" gorm:"default:0"`            // 0=普通, 1=紧急
+	Status    string    `json:"status" gorm:"size:20;default:'open';index"` // open, closed
+	Priority  int       `json:"priority" gorm:"default:0"`                  // 0=普通, 1=紧急
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	User      User      `json:"user" gorm:"foreignKey:UserID"`
@@ -213,10 +211,22 @@ type InboundTemplate struct {
 // TrafficLog 流量日志
 type TrafficLog struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
-	NodeID     uint      `json:"nodeId" gorm:"index"`
+	NodeID     uint      `json:"nodeId" gorm:"index:idx_node_recorded"`
 	InboundID  int       `json:"inboundId"`
 	Upload     int64     `json:"upload"`
 	Download   int64     `json:"download"`
-	RecordedAt time.Time `json:"recordedAt" gorm:"index"`
+	RecordedAt time.Time `json:"recordedAt" gorm:"index:idx_node_recorded"`
 	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// NexCoreConfig NexCore 代理配置（用于在线更新）
+type NexCoreConfig struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	ProxyURL  string    `json:"proxyUrl" gorm:"column:proxy_url;size:255"`
+	RepoToken string    `json:"-" gorm:"column:repo_token;size:255"`
+	Owner     string    `json:"owner" gorm:"size:100"`
+	Repo      string    `json:"repo" gorm:"size:100"`
+	Enabled   bool      `json:"enabled" gorm:"default:true"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

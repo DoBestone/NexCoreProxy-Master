@@ -1,7 +1,10 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -10,14 +13,26 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-// JWT密钥：优先从环境变量读取，未设置则使用固定密钥（避免重启后会话失效）
+// JWT密钥：优先从环境变量读取，未设置则自动生成随机密钥（每次重启会导致旧token失效）
 var jwtSecret = func() []byte {
 	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		if len(secret) < 32 {
+			log.Fatal("JWT_SECRET 长度不能少于 32 字符")
+		}
 		return []byte(secret)
 	}
-	return []byte("nexcore-proxy-default-jwt-secret-key-2026")
+	// 未配置时自动生成随机密钥
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatal("生成 JWT 密钥失败:", err)
+	}
+	secret := hex.EncodeToString(b)
+	log.Println("[安全警告] JWT_SECRET 未设置，已自动生成临时密钥（重启后所有登录会话将失效）")
+	log.Println("[建议] 设置环境变量: export JWT_SECRET=\"" + secret + "\"")
+	return []byte(secret)
 }()
 
 // Claims JWT声明
@@ -154,7 +169,18 @@ func (s *UserService) InitAdmin() error {
 		username = "admin"
 	}
 	if password == "" {
-		password = "admin123"
+		// 自动生成安全随机密码
+		b := make([]byte, 12)
+		if _, err := rand.Read(b); err != nil {
+			return err
+		}
+		password = hex.EncodeToString(b)
+		log.Println("========================================")
+		log.Println("  管理员账户已自动创建")
+		log.Printf("  用户名: %s", username)
+		log.Printf("  密码:   %s", password)
+		log.Println("  请登录后立即修改密码！")
+		log.Println("========================================")
 	}
 
 	return s.Create(username, password, "", "admin")
@@ -173,7 +199,7 @@ func (s *UserService) PurchasePackage(userID, packageID uint) error {
 
 		// 获取用户信息（加锁防止并发扣款）
 		var user model.User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, userID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
 			return errors.New("用户不存在")
 		}
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -177,12 +178,47 @@ func (s *NodeService) SSHConnect(host string, port int, user, password string) (
 				return answers, nil
 			}),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		// 首次连接自动信任并记录主机密钥，后续连接验证一致性（TOFU 策略）
+		HostKeyCallback: s.hostKeyCallback(),
 		Timeout:         30 * time.Second,
 	}
 
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	return ssh.Dial("tcp", addr, config)
+}
+
+// hostKeyCallback 实现 Trust-On-First-Use (TOFU) 主机密钥验证
+// 首次连接时记录密钥，后续连接时验证是否一致
+func (s *NodeService) hostKeyCallback() ssh.HostKeyCallback {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		fingerprint := ssh.FingerprintSHA256(key)
+		host := hostname
+		if h, _, err := net.SplitHostPort(hostname); err == nil {
+			host = h
+		}
+
+		// 检查数据库中是否有已记录的主机密钥指纹
+		var node model.Node
+		if err := model.GetDB().Where("ip = ?", host).First(&node).Error; err != nil {
+			// 节点不在数据库中，允许连接（可能是新节点安装）
+			log.Printf("[SSH] 新主机 %s 密钥指纹: %s", hostname, fingerprint)
+			return nil
+		}
+
+		// 如果节点没有记录过密钥指纹，保存并放行（TOFU）
+		if node.HostKeyFingerprint == "" {
+			log.Printf("[SSH] 首次信任主机 %s 密钥: %s", hostname, fingerprint)
+			model.GetDB().Model(&node).Update("host_key_fingerprint", fingerprint)
+			return nil
+		}
+
+		// 验证密钥指纹是否一致
+		if node.HostKeyFingerprint != fingerprint {
+			return fmt.Errorf("SSH 主机密钥不匹配: %s (预期: %s, 实际: %s)，可能遭受中间人攻击", hostname, node.HostKeyFingerprint, fingerprint)
+		}
+
+		return nil
+	}
 }
 
 // SSHRun 执行SSH命令 (公开方法)

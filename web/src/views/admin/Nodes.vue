@@ -289,7 +289,7 @@ const modalVisible = ref(false)
 const editingNode = ref(null)
 const submitting = ref(false)
 const autoRefresh = ref(false)
-const panelBaseUrl = 'https://ncp.nice07.com/panel'
+const panelBaseUrl = `${window.location.origin}/api/panel`
 let refreshTimer = null
 
 const form = ref({

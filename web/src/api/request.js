@@ -20,8 +20,8 @@ const getToken = () => {
     return localStorage.getItem('user_token')
   }
   
-  // 默认尝试两个 token
-  return localStorage.getItem('admin_token') || localStorage.getItem('user_token')
+  // 未匹配到明确路由时不发送 token，避免权限越界
+  return null
 }
 
 // 获取登出跳转路径
@@ -65,10 +65,17 @@ request.interceptors.response.use(
   },
   error => {
     if (error.response?.status === 401 || error.response?.status === 403) {
+      // 先清除 token，再跳转，避免状态残留
       const logoutPath = getLogoutPath()
-      window.location.href = logoutPath
+      message.error('登录已过期，请重新登录')
+      setTimeout(() => { window.location.href = logoutPath }, 300)
+      return Promise.reject(error)
     }
-    message.error(error.message || '网络错误')
+    if (!error.response) {
+      message.error('网络连接错误')
+    } else {
+      message.error(error.response?.data?.msg || '请求失败')
+    }
     return Promise.reject(error)
   }
 )

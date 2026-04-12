@@ -80,6 +80,12 @@ const routes = [
         meta: { title: '系统设置', icon: 'SettingOutlined' }
       },
       {
+        path: 'system-update',
+        name: 'SystemUpdate',
+        component: () => import('@/views/admin/SystemUpdate.vue'),
+        meta: { title: '系统更新', icon: 'CloudSyncOutlined' }
+      },
+      {
         path: 'announcements',
         name: 'Announcements',
         component: () => import('@/views/admin/Announcements.vue'),
@@ -155,28 +161,50 @@ const router = createRouter({
   routes
 })
 
+// isTokenValid 检查 JWT token 是否存在且未过期
+function isTokenValid(token) {
+  if (!token) return false
+  try {
+    // JWT 格式: header.payload.signature
+    const parts = token.split('.')
+    if (parts.length !== 3) return false
+    const payload = JSON.parse(atob(parts[1]))
+    // 检查是否过期 (exp 是 Unix 时间戳)
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 router.beforeEach((to, from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - NexCore代理主机` : 'NexCore代理主机'
-  
+
   // 根据路由判断使用哪个 token
   const isAdminRoute = to.path.startsWith('/admin')
   const isUserRoute = to.path.startsWith('/user')
-  
+
   const adminToken = localStorage.getItem('admin_token')
   const userToken = localStorage.getItem('user_token')
-  
-  // 管理端路由需要管理端 token
-  if (isAdminRoute && to.meta.requiresAuth !== false && !adminToken) {
+
+  // 管理端路由需要管理端 token（检查存在性 + 有效期）
+  if (isAdminRoute && to.meta.requiresAuth !== false && !isTokenValid(adminToken)) {
+    localStorage.removeItem('admin_token')
+    localStorage.removeItem('admin_username')
     next('/admin/login')
     return
   }
-  
-  // 用户端路由需要用户端 token
-  if (isUserRoute && to.meta.requiresAuth !== false && !userToken) {
+
+  // 用户端路由需要用户端 token（检查存在性 + 有效期）
+  if (isUserRoute && to.meta.requiresAuth !== false && !isTokenValid(userToken)) {
+    localStorage.removeItem('user_token')
+    localStorage.removeItem('user_username')
     next('/user/login')
     return
   }
-  
+
   next()
 })
 

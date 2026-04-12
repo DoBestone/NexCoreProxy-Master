@@ -70,6 +70,10 @@
             <template #icon><SettingOutlined /></template>
             <span>系统设置</span>
           </a-menu-item>
+          <a-menu-item key="system-update" @click="$router.push('/admin/system-update')">
+            <template #icon><CloudSyncOutlined /></template>
+            <span>系统更新</span>
+          </a-menu-item>
         </a-menu>
       </div>
       
@@ -194,6 +198,10 @@
           <template #icon><SettingOutlined /></template>
           <span>系统设置</span>
         </a-menu-item>
+        <a-menu-item key="system-update" @click="navigateTo('/admin/system-update')">
+          <template #icon><CloudSyncOutlined /></template>
+          <span>系统更新</span>
+        </a-menu-item>
       </a-menu>
     </a-drawer>
   </a-layout>
@@ -218,7 +226,8 @@ import {
   LogoutOutlined,
   SafetyOutlined,
   NotificationOutlined,
-  MailOutlined
+  MailOutlined,
+  CloudSyncOutlined
 } from '@ant-design/icons-vue'
 import { logout } from '@/api'
 
