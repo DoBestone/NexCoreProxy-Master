@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	version   = "1.1.0"
+	version   = "1.3.0"
 	buildTime = "unknown"
 )
 
@@ -30,7 +30,7 @@ func main() {
 	var dbHost, dbPort, dbUser, dbPass, dbName string
 
 	flag.BoolVar(&showVersion, "v", false, "show version")
-	flag.IntVar(&port, "port", 8080, "web server port")
+	flag.IntVar(&port, "port", 9310, "web server port")
 	flag.StringVar(&dbHost, "db-host", "localhost", "database host")
 	flag.StringVar(&dbPort, "db-port", "3306", "database port")
 	flag.StringVar(&dbUser, "db-user", "root", "database user")
