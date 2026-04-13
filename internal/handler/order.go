@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"time"
@@ -17,7 +18,10 @@ import (
 func (h *Handler) GetMyOrders(c *gin.Context) {
 	userID := h.getCurrentUserID(c)
 	var orders []model.Order
-	model.GetDB().Where("user_id = ?", userID).Order("created_at desc").Limit(20).Find(&orders)
+	if err := model.GetDB().Where("user_id = ?", userID).Order("created_at desc").Limit(20).Find(&orders).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "获取订单失败"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": orders})
 }
 
@@ -52,7 +56,10 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 	}
 
 	// 生成订单号
-	randN, _ := rand.Int(rand.Reader, big.NewInt(1000))
+	randN, err := rand.Int(rand.Reader, big.NewInt(1000))
+	if err != nil {
+		randN = big.NewInt(0)
+	}
 	orderNo := fmt.Sprintf("NCP%d%d", time.Now().UnixNano()/1000000, randN.Int64())
 
 	now := time.Now()
@@ -65,20 +72,20 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		PayMethod:   req.PayMethod,
 	}
 
-	// 余额支付：先创建订单再扣款，保证原子性
+	// 余额支付：在同一事务中创建订单 + 扣款 + 分配节点
 	if req.PayMethod == "balance" {
 		order.Status = "paid"
 		order.PaidAt = &now
 
-		// 在事务中同时创建订单和扣款
 		err := model.GetDB().Transaction(func(tx *gorm.DB) error {
 			if err := tx.Create(order).Error; err != nil {
 				return err
 			}
-			return h.user.PurchasePackage(userID, req.PackageID)
+			return h.user.PurchasePackageWithTx(tx, userID, req.PackageID)
 		})
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+			log.Printf("余额购买套餐失败 [user=%d, pkg=%d]: %v", userID, req.PackageID, err)
+			c.JSON(http.StatusOK, gin.H{"success": false, "msg": "购买失败，请稍后重试"})
 			return
 		}
 	} else {
@@ -103,18 +110,58 @@ func (h *Handler) UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
-	now := time.Now()
-	updates := map[string]interface{}{
-		"status": req.Status,
-	}
-	if req.Status == "paid" {
-		updates["paid_at"] = &now
-	}
-
-	if err := model.GetDB().Model(&model.Order{}).Where("id = ?", parseUint(id)).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "更新失败"})
+	// 获取订单信息
+	var order model.Order
+	if err := model.GetDB().First(&order, parseUint(id)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "订单不存在"})
 		return
 	}
 
+	// 状态转移校验：禁止从终态回退
+	allowed := map[string][]string{
+		"pending":   {"paid", "cancelled"},
+		"paid":      {"refunded"},
+		"cancelled": {},
+		"refunded":  {},
+	}
+	validTransitions, ok := allowed[order.Status]
+	if !ok || !contains(validTransitions, req.Status) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": fmt.Sprintf("不允许从 %s 转为 %s", order.Status, req.Status)})
+		return
+	}
+
+	// 从 pending → paid 时激活套餐
+	if req.Status == "paid" && order.Status == "pending" {
+		now := time.Now()
+		err := model.GetDB().Transaction(func(tx *gorm.DB) error {
+			order.Status = "paid"
+			order.PaidAt = &now
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			return h.user.ActivatePackageWithTx(tx, order.UserID, order.PackageID)
+		})
+		if err != nil {
+			log.Printf("激活套餐失败 [order=%d, user=%d, pkg=%d]: %v", order.ID, order.UserID, order.PackageID, err)
+			c.JSON(http.StatusOK, gin.H{"success": false, "msg": "激活套餐失败"})
+			return
+		}
+	} else {
+		updates := map[string]interface{}{"status": req.Status}
+		if err := model.GetDB().Model(&order).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "更新失败"})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func contains(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }

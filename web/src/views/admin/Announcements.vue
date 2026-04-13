@@ -109,7 +109,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   NotificationOutlined, PlusOutlined, EditOutlined, DeleteOutlined 
@@ -119,6 +119,8 @@ import request from '@/api/request'
 const loading = ref(false)
 const announcements = ref([])
 const modalVisible = ref(false)
+
+onDeactivated(() => { modalVisible.value = false })
 const editingAnnouncement = ref(null)
 const submitting = ref(false)
 
@@ -225,17 +227,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -254,7 +256,7 @@ onMounted(() => {
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border: 1px solid rgba(0, 0, 0, 0.04);
-  border-left: 4px solid #1677ff;
+  border-left: 4px solid #3b82f6;
   transition: all 0.2s ease;
 }
 
@@ -263,11 +265,11 @@ onMounted(() => {
 }
 
 .announcement-card.warning {
-  border-left-color: #faad14;
+  border-left-color: #d97706;
 }
 
 .announcement-card.success {
-  border-left-color: #52c41a;
+  border-left-color: #16a34a;
 }
 
 .announcement-header {
@@ -286,14 +288,14 @@ onMounted(() => {
 .announcement-title {
   font-size: 16px;
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .pinned-badge {
-  background: #ff4d4f;
+  background: #dc2626;
   color: white;
   padding: 2px 8px;
   border-radius: 4px;
@@ -303,12 +305,12 @@ onMounted(() => {
 
 .announcement-time {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .announcement-content {
   font-size: 14px;
-  color: #595959;
+  color: #475569;
   line-height: 1.6;
   margin-bottom: 16px;
   white-space: pre-wrap;
@@ -318,7 +320,7 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
 }
 
 /* 空状态 */
@@ -331,12 +333,12 @@ onMounted(() => {
 
 .empty-icon {
   font-size: 48px;
-  color: #d9d9d9;
+  color: #cbd5e1;
   margin-bottom: 16px;
 }
 
 .empty-state p {
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 20px;
 }
 
@@ -352,9 +354,9 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.type-info { color: #1677ff; }
-.type-warning { color: #faad14; }
-.type-success { color: #52c41a; }
+.type-info { color: #3b82f6; }
+.type-warning { color: #d97706; }
+.type-success { color: #16a34a; }
 
 /* 响应式 */
 @media (max-width: 768px) {

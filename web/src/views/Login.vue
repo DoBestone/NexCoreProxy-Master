@@ -261,7 +261,7 @@ onUnmounted(() => {
   justify-content: center;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #f8fafc 0%, #e6f4ff 50%, #f0f9ff 100%);
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 50%, #eff6ff 100%);
 }
 
 /* 背景装饰圆圈 */
@@ -281,7 +281,7 @@ onUnmounted(() => {
 .bg-circle-1 {
   width: 600px;
   height: 600px;
-  background: linear-gradient(135deg, rgba(22, 119, 255, 0.08) 0%, rgba(19, 194, 194, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(19, 194, 194, 0.05) 100%);
   top: -200px;
   right: -100px;
 }
@@ -289,7 +289,7 @@ onUnmounted(() => {
 .bg-circle-2 {
   width: 400px;
   height: 400px;
-  background: linear-gradient(135deg, rgba(19, 194, 194, 0.08) 0%, rgba(22, 119, 255, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(19, 194, 194, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%);
   bottom: -100px;
   left: -100px;
 }
@@ -297,7 +297,7 @@ onUnmounted(() => {
 .bg-circle-3 {
   width: 300px;
   height: 300px;
-  background: rgba(22, 119, 255, 0.03);
+  background: rgba(59, 130, 246, 0.03);
   top: 50%;
   left: 10%;
   transform: translateY(-50%);
@@ -335,9 +335,9 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-.announcement-item.info { color: #1677ff; }
+.announcement-item.info { color: #3b82f6; }
 .announcement-item.warning { color: #fa8c16; }
-.announcement-item.success { color: #52c41a; }
+.announcement-item.success { color: #16a34a; }
 .announcement-icon { font-size: 16px; }
 .announcement-title { font-weight: 500; }
 
@@ -385,10 +385,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 16px;
   color: white;
-  box-shadow: 0 8px 24px rgba(22, 119, 255, 0.25);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.25);
 }
 
 .logo-icon svg {
@@ -406,7 +406,7 @@ onUnmounted(() => {
 
 .login-subtitle {
   font-size: 14px;
-  color: #8c8c8c;
+  color: #64748b;
   font-weight: 400;
 }
 
@@ -428,12 +428,12 @@ onUnmounted(() => {
 }
 
 .login-form :deep(.ant-input-affix-wrapper:hover) {
-  border-color: #4096ff;
+  border-color: #60a5fa;
 }
 
 .login-form :deep(.ant-input-affix-wrapper-focused) {
-  border-color: #1677ff;
-  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.08);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
 }
 
 .login-form :deep(.ant-input) {
@@ -441,7 +441,7 @@ onUnmounted(() => {
 }
 
 .input-icon {
-  color: #bfbfbf;
+  color: #94a3b8;
   font-size: 16px;
 }
 
@@ -461,16 +461,16 @@ onUnmounted(() => {
   border-radius: 12px;
   font-size: 15px;
   font-weight: 600;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border: none;
-  box-shadow: 0 4px 14px rgba(22, 119, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
   transition: all 0.2s ease;
 }
 
 .login-actions :deep(.ant-btn:hover) {
-  background: linear-gradient(135deg, #0958d9 0%, #1677ff 100%);
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(22, 119, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
 }
 
 /* 注册链接 */
@@ -478,11 +478,11 @@ onUnmounted(() => {
   text-align: center;
   padding-top: 16px;
   font-size: 14px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .register-link a {
-  color: #1677ff;
+  color: #3b82f6;
   cursor: pointer;
   margin-left: 4px;
 }

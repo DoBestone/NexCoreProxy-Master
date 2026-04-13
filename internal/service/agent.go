@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -79,10 +80,12 @@ func (m *AgentManager) Register(agentKey string, nodeID uint) *AgentConnection {
 
 	// 更新节点状态
 	db := model.GetDB()
-	db.Model(&model.Node{}).Where("agent_key = ?", agentKey).Updates(map[string]interface{}{
+	if err := db.Model(&model.Node{}).Where("agent_key = ?", agentKey).Updates(map[string]interface{}{
 		"status":    "online",
 		"connected": true,
-	})
+	}).Error; err != nil {
+		log.Printf("[Agent] 更新节点在线状态失败 (key=%s): %v", agentKey[:8], err)
+	}
 
 	return conn
 }
@@ -99,10 +102,12 @@ func (m *AgentManager) Unregister(agentKey string) {
 
 		// 更新节点状态
 		db := model.GetDB()
-		db.Model(&model.Node{}).Where("agent_key = ?", agentKey).Updates(map[string]interface{}{
+		if err := db.Model(&model.Node{}).Where("agent_key = ?", agentKey).Updates(map[string]interface{}{
 			"status":    "offline",
 			"connected": false,
-		})
+		}).Error; err != nil {
+			log.Printf("[Agent] 更新节点离线状态失败 (key=%s): %v", agentKey[:8], err)
+		}
 	}
 }
 
@@ -211,9 +216,12 @@ func (m *AgentManager) UpdateStatus(status *AgentStatus) error {
 
 // GenerateAgentKey 生成Agent密钥
 func GenerateAgentKey() string {
-	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// 极端情况：随机源不可用时使用时间戳混合
+		return hex.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+	}
+	return hex.EncodeToString(b)
 }
 
 // GetConnectedNodes 获取已连接的节点

@@ -14,7 +14,10 @@ import (
 func (h *Handler) GetMyTickets(c *gin.Context) {
 	userID := h.getCurrentUserID(c)
 	var tickets []model.Ticket
-	model.GetDB().Where("user_id = ?", userID).Order("created_at desc").Find(&tickets)
+	if err := model.GetDB().Where("user_id = ?", userID).Order("created_at desc").Find(&tickets).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "获取工单失败"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": tickets})
 }
 
@@ -32,8 +35,8 @@ func (h *Handler) GetAllTickets(c *gin.Context) {
 func (h *Handler) CreateTicket(c *gin.Context) {
 	userID := h.getCurrentUserID(c)
 	var req struct {
-		Subject  string `json:"subject" binding:"required"`
-		Content  string `json:"content" binding:"required"`
+		Subject  string `json:"subject" binding:"required,max=200"`
+		Content  string `json:"content" binding:"required,max=5000"`
 		Priority int    `json:"priority"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -56,7 +59,7 @@ func (h *Handler) CreateTicket(c *gin.Context) {
 
 // GetTicketDetail 获取工单详情
 func (h *Handler) GetTicketDetail(c *gin.Context) {
-	id := c.Param("id")
+	id := parseUint(c.Param("id"))
 	userID := h.getCurrentUserID(c)
 	roleVal, _ := c.Get("role")
 	role, _ := roleVal.(string)
@@ -83,20 +86,39 @@ func (h *Handler) GetTicketDetail(c *gin.Context) {
 	}})
 }
 
-// ReplyTicket 回复工单
+// ReplyTicket 回复工单（管理员）
 func (h *Handler) ReplyTicket(c *gin.Context) {
-	id := c.Param("id")
-	var reply model.TicketReply
-	if err := c.ShouldBindJSON(&reply); err != nil {
+	id := parseUint(c.Param("id"))
+
+	// 验证工单存在
+	var ticket model.Ticket
+	if err := model.GetDB().First(&ticket, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "工单不存在"})
+		return
+	}
+
+	// 已关闭工单不允许管理员回复
+	if ticket.Status == "closed" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "工单已关闭，无法回复"})
+		return
+	}
+
+	var req struct {
+		Content string `json:"content" binding:"required,max=5000"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
 		return
 	}
-	reply.TicketID = parseUint(id)
+	reply := model.TicketReply{
+		TicketID: id,
+		UserID:   0, // 0 = 管理员回复
+		Content:  req.Content,
+	}
 	if err := model.GetDB().Create(&reply).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "回复失败"})
 		return
 	}
-	// 更新工单时间
 	if err := model.GetDB().Model(&model.Ticket{}).Where("id = ?", reply.TicketID).Update("updated_at", time.Now()).Error; err != nil {
 		log.Printf("更新工单时间失败: %v", err)
 	}
@@ -119,7 +141,7 @@ func (h *Handler) UserReplyTicket(c *gin.Context) {
 	ticketID := c.Param("id")
 
 	var req struct {
-		Content string `json:"content" binding:"required"`
+		Content string `json:"content" binding:"required,max=5000"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
@@ -150,7 +172,10 @@ func (h *Handler) UserReplyTicket(c *gin.Context) {
 
 	// 如果工单已关闭，重新打开
 	if ticket.Status == "closed" {
-		model.GetDB().Model(&ticket).Update("status", "open")
+		if err := model.GetDB().Model(&ticket).Update("status", "open").Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "重新打开工单失败"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "回复成功"})

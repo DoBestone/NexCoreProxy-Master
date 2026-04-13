@@ -124,15 +124,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { MessageOutlined, EyeOutlined, CommentOutlined, CheckOutlined } from '@ant-design/icons-vue'
-import { getAllTickets, replyTicket as replyTicketApi, closeTicket as closeTicketApi } from '@/api'
+import { getAllTickets, replyTicket as replyTicketApi, closeTicket as closeTicketApi, getTicketDetail } from '@/api'
 
 const loading = ref(false)
 const tickets = ref([])
 const detailVisible = ref(false)
 const replyVisible = ref(false)
+
+onDeactivated(() => { detailVisible.value = false; replyVisible.value = false })
 const currentTicket = ref(null)
 const replyContent = ref('')
 const replying = ref(false)
@@ -162,9 +164,16 @@ const fetchTickets = async () => {
   }
 }
 
-const viewTicket = (ticket) => {
+const viewTicket = async (ticket) => {
   currentTicket.value = ticket
   detailVisible.value = true
+  try {
+    const res = await getTicketDetail(ticket.id)
+    currentTicket.value = res.obj.ticket
+    currentTicket.value.replies = res.obj.replies || []
+  } catch (e) {
+    // 加载失败时保留列表数据
+  }
 }
 
 const replyTicket = (ticket) => {
@@ -221,17 +230,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -249,7 +258,7 @@ onMounted(() => {
 }
 
 .ticket-subject:hover .subject-text {
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .subject-text {
@@ -262,8 +271,8 @@ onMounted(() => {
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* 用户单元格 */
@@ -274,7 +283,7 @@ onMounted(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #13c2c2 0%, #36cfc9 100%);
+  background: linear-gradient(135deg, #0891b2 0%, #36cfc9 100%);
 }
 
 /* 状态徽章 */
@@ -287,18 +296,18 @@ onMounted(() => {
 }
 
 .status-badge.open {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .status-badge.closed {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .time-text {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 操作按钮 */
@@ -313,22 +322,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  color: #595959;
+  color: #475569;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .action-btn.primary:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 /* 工单详情弹窗 */
@@ -350,12 +359,12 @@ onMounted(() => {
 
 .meta-item .label {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .meta-item .value {
   font-weight: 500;
-  color: #262626;
+  color: #1e293b;
 }
 
 .priority-badge {
@@ -367,18 +376,18 @@ onMounted(() => {
 }
 
 .priority-badge.urgent {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .priority-badge.normal {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .ticket-content {
   background: white;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   overflow: hidden;
 }
@@ -388,15 +397,15 @@ onMounted(() => {
   background: #f8fafc;
   font-size: 13px;
   font-weight: 600;
-  color: #595959;
-  border-bottom: 1px solid #f0f0f0;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .content-body {
   padding: 16px;
   font-size: 14px;
   line-height: 1.6;
-  color: #262626;
+  color: #1e293b;
   white-space: pre-wrap;
 }
 
@@ -412,12 +421,12 @@ onMounted(() => {
 }
 
 .ticket-label {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .ticket-name {
   font-weight: 500;
-  color: #262626;
+  color: #1e293b;
 }
 
 .reply-input {

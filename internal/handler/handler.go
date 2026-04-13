@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"nexcoreproxy-master/internal/model"
 	"nexcoreproxy-master/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -104,7 +105,14 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.GET("/nodes/:id/api-token", h.GetNodeAPIToken)
 				admin.POST("/nodes/:id/api-token", h.GenNodeAPIToken)
 
+				// 中转规则管理
+				admin.GET("/relay-rules", h.GetRelayRules)
+				admin.POST("/relay-rules", h.CreateRelayRule)
+				admin.DELETE("/relay-rules/:id", h.DeleteRelayRule)
+				admin.POST("/relay-rules/:id/sync", h.SyncRelayRule)
+
 				// 套餐管理
+				admin.GET("/admin/packages", h.GetAllPackages)
 				admin.POST("/packages", h.AddPackage)
 				admin.PUT("/packages/:id", h.UpdatePackage)
 				admin.DELETE("/packages/:id", h.DeletePackage)
@@ -170,6 +178,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 func (h *Handler) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
+		token = strings.TrimPrefix(token, "Bearer ")
+		token = strings.TrimPrefix(token, "bearer ")
 		if token == "" {
 			if cookie, err := c.Cookie("token"); err == nil {
 				token = cookie
@@ -186,6 +196,14 @@ func (h *Handler) AuthMiddleware() gin.HandlerFunc {
 		claims, err := h.user.ParseToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "msg": "Token无效或已过期"})
+			c.Abort()
+			return
+		}
+
+		// 验证用户是否仍然启用
+		var user model.User
+		if err := model.GetDB().Select("id, enable").First(&user, claims.UserID).Error; err != nil || !user.Enable {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "msg": "用户已被禁用或不存在"})
 			c.Abort()
 			return
 		}
@@ -216,7 +234,9 @@ func (h *Handler) AdminMiddleware() gin.HandlerFunc {
 // getCurrentUserID 从context获取当前用户ID
 func (h *Handler) getCurrentUserID(c *gin.Context) uint {
 	if userID, exists := c.Get("userId"); exists {
-		return userID.(uint)
+		if id, ok := userID.(uint); ok {
+			return id
+		}
 	}
 	return 0
 }

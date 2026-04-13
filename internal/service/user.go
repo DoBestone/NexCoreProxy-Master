@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -55,11 +56,11 @@ func NewUserService() *UserService {
 func (s *UserService) Authenticate(username, password string) (*model.User, error) {
 	var user model.User
 	if err := model.GetDB().Where("username = ? AND enable = ?", username, true).First(&user).Error; err != nil {
-		return nil, errors.New("用户不存在或已禁用")
+		return nil, errors.New("用户名或密码错误")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, errors.New("密码错误")
+		return nil, errors.New("用户名或密码错误")
 	}
 
 	return &user, nil
@@ -85,6 +86,10 @@ func (s *UserService) GenerateToken(user *model.User) (string, error) {
 // ParseToken 解析JWT Token
 func (s *UserService) ParseToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// 防止算法混淆攻击：只允许 HMAC 签名
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return jwtSecret, nil
 	})
 
@@ -114,7 +119,14 @@ func (s *UserService) Create(username, password, email, role string) error {
 		Enable:   true,
 	}
 
-	return model.GetDB().Create(user).Error
+	db := model.GetDB()
+	if err := db.Create(user).Error; err != nil {
+		return err
+	}
+
+	// 生成邀请码（与注册流程一致：NC + 用户ID）
+	inviteCode := fmt.Sprintf("NC%06d", user.ID)
+	return db.Model(user).Update("invite_code", inviteCode).Error
 }
 
 // HashPassword 加密密码
@@ -178,20 +190,24 @@ func (s *UserService) InitAdmin() error {
 		log.Println("========================================")
 		log.Println("  管理员账户已自动创建")
 		log.Printf("  用户名: %s", username)
-		log.Printf("  密码:   %s", password)
+		log.Println("  密码已自动生成，请查看启动日志")
 		log.Println("  请登录后立即修改密码！")
 		log.Println("========================================")
+		// 密码仅在首次创建时输出到 stderr，避免日志持久化泄露
+		fmt.Fprintf(os.Stderr, "[NexCore] 初始管理员密码: %s\n", password)
 	}
 
 	return s.Create(username, password, "", "admin")
 }
 
-// PurchasePackage 用户购买套餐
+// PurchasePackage 用户余额购买套餐（自建事务版本）
 func (s *UserService) PurchasePackage(userID, packageID uint) error {
-	db := model.GetDB()
+	return s.PurchasePackageWithTx(model.GetDB(), userID, packageID)
+}
 
+// PurchasePackageWithTx 用户余额购买套餐（扣余额 + 激活）
+func (s *UserService) PurchasePackageWithTx(db *gorm.DB, userID, packageID uint) error {
 	return db.Transaction(func(tx *gorm.DB) error {
-		// 获取套餐信息
 		var pkg model.Package
 		if err := tx.First(&pkg, packageID).Error; err != nil {
 			return errors.New("套餐不存在")
@@ -200,52 +216,83 @@ func (s *UserService) PurchasePackage(userID, packageID uint) error {
 		// 获取用户信息（加锁防止并发扣款）
 		var user model.User
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
-			return errors.New("用户不存在")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("用户不存在")
+			}
+			return fmt.Errorf("查询用户失败: %v", err)
 		}
 
-		// 检查余额
 		if user.Balance < pkg.Price {
 			return errors.New("余额不足")
 		}
 
-		// 扣除余额
 		user.Balance -= pkg.Price
+		return s.activatePackage(tx, &user, &pkg)
+	})
+}
 
-		// 设置流量限制
-		if pkg.Traffic > 0 {
-			user.TrafficLimit = pkg.Traffic
+// ActivatePackageWithTx 激活套餐（不扣余额，用于管理员确认外部支付订单）
+func (s *UserService) ActivatePackageWithTx(db *gorm.DB, userID, packageID uint) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var pkg model.Package
+		if err := tx.First(&pkg, packageID).Error; err != nil {
+			return errors.New("套餐不存在")
 		}
 
-		// 设置到期时间
+		var user model.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("用户不存在")
+			}
+			return fmt.Errorf("查询用户失败: %v", err)
+		}
+
+		return s.activatePackage(tx, &user, &pkg)
+	})
+}
+
+// activatePackage 内部方法：设置流量/到期时间/分配节点
+func (s *UserService) activatePackage(tx *gorm.DB, user *model.User, pkg *model.Package) error {
+	if pkg.Traffic > 0 {
+		user.TrafficLimit = pkg.Traffic
+	}
+	if pkg.Duration > 0 {
+		expireAt := time.Now().AddDate(0, 0, pkg.Duration)
+		user.ExpireAt = &expireAt
+	}
+
+	if err := tx.Save(user).Error; err != nil {
+		return err
+	}
+
+	// 分配节点（跳过已有分配，排除中转节点）
+	var nodes []model.Node
+	tx.Where("enable = ? AND (type IN (?, ?, ?) OR type IS NULL)", true, "standalone", "backend", "").Find(&nodes)
+
+	var existingNodeIDs []uint
+	tx.Model(&model.UserNode{}).Where("user_id = ?", user.ID).Pluck("node_id", &existingNodeIDs)
+	existingMap := make(map[uint]bool)
+	for _, nid := range existingNodeIDs {
+		existingMap[nid] = true
+	}
+
+	for _, node := range nodes {
+		if existingMap[node.ID] {
+			continue
+		}
+		userNode := model.UserNode{
+			UserID: user.ID,
+			NodeID: node.ID,
+			Enable: true,
+		}
 		if pkg.Duration > 0 {
 			expireAt := time.Now().AddDate(0, 0, pkg.Duration)
-			user.ExpireAt = &expireAt
+			userNode.ExpireAt = &expireAt
 		}
-
-		// 保存用户
-		if err := tx.Save(&user).Error; err != nil {
+		if err := tx.Create(&userNode).Error; err != nil {
 			return err
 		}
+	}
 
-		// 分配节点 (简化处理：分配所有启用节点)
-		var nodes []model.Node
-		tx.Where("enable = ?", true).Find(&nodes)
-
-		for _, node := range nodes {
-			userNode := model.UserNode{
-				UserID: userID,
-				NodeID: node.ID,
-				Enable: true,
-			}
-			if pkg.Duration > 0 {
-				expireAt := time.Now().AddDate(0, 0, pkg.Duration)
-				userNode.ExpireAt = &expireAt
-			}
-			if err := tx.Create(&userNode).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	return nil
 }

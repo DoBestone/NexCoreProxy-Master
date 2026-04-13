@@ -38,8 +38,8 @@ func (h *Handler) GetAdminAnnouncements(c *gin.Context) {
 // AddAnnouncement 添加公告
 func (h *Handler) AddAnnouncement(c *gin.Context) {
 	var req struct {
-		Title   string `json:"title" binding:"required"`
-		Content string `json:"content" binding:"required"`
+		Title   string `json:"title" binding:"required,max=200"`
+		Content string `json:"content" binding:"required,max=10000"`
 		Type    string `json:"type"`
 		Pinned  bool   `json:"pinned"`
 	}

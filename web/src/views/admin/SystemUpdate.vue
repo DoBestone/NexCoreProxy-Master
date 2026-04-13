@@ -62,12 +62,12 @@
                 </a-col>
                 <a-col :span="12">
                   <a-form-item label="仓库拥有者">
-                    <a-input v-model:value="configForm.owner" placeholder="GitHub Owner" />
+                    <a-input v-model:value="configForm.owner" placeholder="仓库拥有者" />
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
                   <a-form-item label="仓库名称">
-                    <a-input v-model:value="configForm.repo" placeholder="NexCoreProxy" />
+                    <a-input v-model:value="configForm.repo" placeholder="仓库名称" />
                   </a-form-item>
                 </a-col>
               </a-row>
@@ -116,31 +116,31 @@
         <p class="progress-hint">请勿关闭页面</p>
         <div class="update-steps">
           <div :class="['step', { done: updateStep >= 1 }]">
-            <CheckCircleFilled v-if="updateStep >= 1" style="color:#52c41a" />
-            <LoadingOutlined v-else style="color:#bfbfbf" />
+            <CheckCircleFilled v-if="updateStep >= 1" style="color:#16a34a" />
+            <LoadingOutlined v-else style="color:#94a3b8" />
             1. 下载更新
           </div>
           <div :class="['step', { done: updateStep >= 2 }]">
-            <CheckCircleFilled v-if="updateStep >= 2" style="color:#52c41a" />
-            <LoadingOutlined v-else style="color:#bfbfbf" />
+            <CheckCircleFilled v-if="updateStep >= 2" style="color:#16a34a" />
+            <LoadingOutlined v-else style="color:#94a3b8" />
             2. 替换文件
           </div>
           <div :class="['step', { done: updateStep >= 3 }]">
-            <CheckCircleFilled v-if="updateStep >= 3" style="color:#52c41a" />
-            <LoadingOutlined v-else style="color:#bfbfbf" />
+            <CheckCircleFilled v-if="updateStep >= 3" style="color:#16a34a" />
+            <LoadingOutlined v-else style="color:#94a3b8" />
             3. 重启服务
           </div>
         </div>
       </div>
       <!-- 更新成功 -->
       <div v-else-if="updateProgress === 'done'" class="update-progress-content">
-        <CheckCircleFilled style="font-size:56px;color:#52c41a" />
+        <CheckCircleFilled style="font-size:56px;color:#16a34a" />
         <h3 class="progress-title">更新完成！</h3>
         <p class="progress-hint">页面将在 3 秒后自动刷新</p>
       </div>
       <!-- 更新失败 -->
       <div v-else-if="updateProgress === 'error'" class="update-progress-content">
-        <CloseCircleFilled style="font-size:56px;color:#ff4d4f" />
+        <CloseCircleFilled style="font-size:56px;color:#dc2626" />
         <h3 class="progress-title">{{ updateErrorMsg }}</h3>
         <p class="progress-hint">{{ updateErrorHint }}</p>
         <div v-if="updateErrorCmd" class="update-cmd-box"><code>{{ updateErrorCmd }}</code></div>
@@ -151,7 +151,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   CloudSyncOutlined, ReloadOutlined, RightOutlined,
@@ -175,6 +175,8 @@ const changelogLoading = ref(false)
 const expandedTags = ref(new Set())
 
 const showProgressDialog = ref(false)
+
+onDeactivated(() => { showProgressDialog.value = false })
 const updateProgress = ref('')
 const updateStep = ref(0)
 const updateErrorMsg = ref('')
@@ -338,48 +340,48 @@ onMounted(() => { loadVersion(); loadProxyConfig(); checkUpdate() })
 <style scoped>
 .system-update-page { max-width: 900px; animation: fadeIn 0.3s ease; }
 .page-header { margin-bottom: 20px; }
-.page-title { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; color: #262626; margin: 0; }
-.title-icon { color: #1677ff; font-size: 24px; }
-.page-desc { color: #8c8c8c; font-size: 14px; margin-top: 4px; }
+.page-title { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; color: #1e293b; margin: 0; }
+.title-icon { color: #3b82f6; font-size: 24px; }
+.page-desc { color: #64748b; font-size: 14px; margin-top: 4px; }
 
-.version-bar { display: flex; align-items: center; gap: 24px; background: #fff; border: 1px solid #f0f0f0; border-radius: 12px; padding: 12px 20px; margin-bottom: 16px; }
+.version-bar { display: flex; align-items: center; gap: 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 20px; margin-bottom: 16px; }
 .version-info { display: flex; align-items: center; gap: 8px; }
-.version-label { font-size: 12px; color: #8c8c8c; }
-.version-val { font-size: 14px; font-weight: 600; color: #262626; display: flex; align-items: center; }
+.version-label { font-size: 12px; color: #64748b; }
+.version-val { font-size: 14px; font-weight: 600; color: #1e293b; display: flex; align-items: center; }
 
 .tabs-card { border-radius: 14px; }
 .tab-inner { padding: 4px 0; }
 .tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 
 .changelog-list { }
-.changelog-item { border-bottom: 1px solid #f5f5f5; }
+.changelog-item { border-bottom: 1px solid #f1f5f9; }
 .changelog-item:last-child { border-bottom: none; }
-.changelog-item.current { background: #e6f4ff; }
+.changelog-item.current { background: #eff6ff; }
 .changelog-item-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; cursor: pointer; user-select: none; }
 .changelog-item-header:hover { opacity: 0.8; }
 .changelog-item-left { display: flex; align-items: center; gap: 8px; }
-.expand-arrow { transition: transform 0.2s; color: #bfbfbf; font-size: 10px; }
+.expand-arrow { transition: transform 0.2s; color: #94a3b8; font-size: 10px; }
 .expand-arrow.rotated { transform: rotate(90deg); }
-.changelog-summary { font-size: 12px; color: #8c8c8c; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.changelog-date { font-size: 12px; color: #8c8c8c; }
+.changelog-summary { font-size: 12px; color: #64748b; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changelog-date { font-size: 12px; color: #64748b; }
 .changelog-body-wrap { padding: 0 0 12px 24px; }
-.changelog-body { font-size: 13px; line-height: 1.7; color: #595959; }
-.changelog-body.empty { color: #bfbfbf; }
-.changelog-body :deep(h3), .changelog-body :deep(h4) { margin: 8px 0 4px; font-size: 13px; font-weight: 600; color: #262626; }
+.changelog-body { font-size: 13px; line-height: 1.7; color: #475569; }
+.changelog-body.empty { color: #94a3b8; }
+.changelog-body :deep(h3), .changelog-body :deep(h4) { margin: 8px 0 4px; font-size: 13px; font-weight: 600; color: #1e293b; }
 .changelog-body :deep(ul) { margin: 4px 0; padding-left: 18px; }
-.changelog-body :deep(code) { background: #f5f5f5; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+.changelog-body :deep(code) { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
 
 .update-progress-content { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 20px 0; }
 .spinner-wrap { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; }
-.update-spinner { width: 48px; height: 48px; border: 3px solid #f0f0f0; border-top-color: #1677ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+.update-spinner { width: 48px; height: 48px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.progress-title { margin: 16px 0 4px; font-size: 17px; font-weight: 600; color: #262626; }
-.progress-hint { color: #8c8c8c; font-size: 13px; margin: 0; }
+.progress-title { margin: 16px 0 4px; font-size: 17px; font-weight: 600; color: #1e293b; }
+.progress-hint { color: #64748b; font-size: 13px; margin: 0; }
 .update-steps { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; text-align: left; width: 100%; max-width: 200px; }
-.step { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #bfbfbf; transition: color 0.3s; }
-.step.done { color: #52c41a; font-weight: 500; }
-.update-cmd-box { margin-top: 12px; padding: 10px 16px; background: #fafafa; border: 1px solid #f0f0f0; border-radius: 6px; width: 100%; }
-.update-cmd-box code { font-size: 13px; color: #262626; font-family: 'SF Mono', Monaco, monospace; }
+.step { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #94a3b8; transition: color 0.3s; }
+.step.done { color: #16a34a; font-weight: 500; }
+.update-cmd-box { margin-top: 12px; padding: 10px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; width: 100%; }
+.update-cmd-box code { font-size: 13px; color: #1e293b; font-family: 'SF Mono', Monaco, monospace; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 768px) { .version-bar { flex-wrap: wrap; gap: 12px; } .changelog-summary { display: none; } }

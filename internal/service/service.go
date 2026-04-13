@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -34,6 +35,7 @@ func (s *Services) StartCron() {
 		s.Node.SyncAll()
 	})
 	if err != nil {
+		log.Printf("[Cron] 注册节点同步任务失败: %v", err)
 		return
 	}
 	s.Cron.Start()

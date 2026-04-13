@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -209,4 +210,76 @@ func (c *AgentAPIClient) IsAPIAvailable(ip string, port int, token string) bool 
 	url := agentURL(ip, port, "/api/status")
 	_, err := c.doRequest(url, token)
 	return err == nil
+}
+
+// doRequestWithBody 执行带 JSON body 的请求
+func (c *AgentAPIClient) doRequestWithBody(method, url, token string, data interface{}) ([]byte, error) {
+	var body io.Reader
+	if data != nil {
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return nil, fmt.Errorf("序列化请求数据失败: %v", err)
+		}
+		body = bytes.NewBuffer(jsonData)
+	}
+
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Token", token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+	return respBody, nil
+}
+
+// AddRelayOutbound 添加中转 outbound 和 routing 到节点
+func (c *AgentAPIClient) AddRelayOutbound(ip string, port int, token string, payload map[string]interface{}) error {
+	url := agentURL(ip, port, "/api/relay-outbound")
+	body, err := c.doRequestWithBody("POST", url, token, payload)
+	if err != nil {
+		return err
+	}
+	var result AgentAPIResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("添加中转 outbound 失败: %s", result.Msg)
+	}
+	return nil
+}
+
+// RemoveRelayOutbound 移除中转 outbound 和 routing
+func (c *AgentAPIClient) RemoveRelayOutbound(ip string, port int, token string, outboundTag, inboundTag string) error {
+	url := agentURL(ip, port, "/api/relay-outbound")
+	payload := map[string]string{
+		"outboundTag": outboundTag,
+		"inboundTag":  inboundTag,
+	}
+	body, err := c.doRequestWithBody("DELETE", url, token, payload)
+	if err != nil {
+		return err
+	}
+	var result AgentAPIResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("移除中转 outbound 失败: %s", result.Msg)
+	}
+	return nil
 }

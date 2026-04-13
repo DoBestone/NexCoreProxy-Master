@@ -148,18 +148,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined,
   DatabaseOutlined, ClockCircleOutlined, CloudServerOutlined
 } from '@ant-design/icons-vue'
-import { getPackages, addPackage, updatePackage, deletePackage } from '@/api'
+import { getAllPackages, addPackage, updatePackage, deletePackage } from '@/api'
 
 const loading = ref(false)
 const packages = ref([])
 const modalVisible = ref(false)
 const editingPackage = ref(null)
+
+onDeactivated(() => { modalVisible.value = false })
 const submitting = ref(false)
 
 const form = ref({
@@ -184,7 +186,7 @@ const formatTraffic = (bytes) => {
 const fetchPackages = async () => {
   loading.value = true
   try {
-    const res = await getPackages()
+    const res = await getAllPackages()
     packages.value = res.obj || []
   } catch (e) {
     message.error('获取套餐列表失败')
@@ -274,17 +276,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -325,7 +327,7 @@ onMounted(() => {
 .package-name {
   font-size: 16px;
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
 }
 
 .protocol-badge {
@@ -333,14 +335,14 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
-.protocol-badge.all { background: #e6f4ff; color: #1677ff; }
-.protocol-badge.vmess { background: #f9f0ff; color: #722ed1; }
-.protocol-badge.vless { background: #fff7e6; color: #d46b08; }
-.protocol-badge.trojan { background: #f6ffed; color: #389e0d; }
+.protocol-badge.all { background: #eff6ff; color: #3b82f6; }
+.protocol-badge.vmess { background: #f9f0ff; color: #7c3aed; }
+.protocol-badge.vless { background: #fffbeb; color: #b45309; }
+.protocol-badge.trojan { background: #f0fdf4; color: #15803d; }
 .protocol-badge.shadowsocks { background: #e6fffb; color: #08979c; }
 
 .package-price {
@@ -349,14 +351,14 @@ onMounted(() => {
 
 .price-symbol {
   font-size: 18px;
-  color: #1677ff;
+  color: #3b82f6;
   font-weight: 500;
 }
 
 .price-value {
   font-size: 36px;
   font-weight: 700;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .package-features {
@@ -365,7 +367,7 @@ onMounted(() => {
   gap: 10px;
   margin-bottom: 20px;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
 }
 
 .feature-item {
@@ -373,11 +375,11 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #595959;
+  color: #475569;
 }
 
 .feature-icon {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .package-actions {
@@ -385,7 +387,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
 }
 
 .action-btns {
@@ -399,22 +401,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  color: #595959;
+  color: #475569;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .action-btn.danger:hover {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* 空状态卡片 */
@@ -427,24 +429,24 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  border: 2px dashed #d9d9d9;
+  border: 2px dashed #cbd5e1;
   cursor: pointer;
   transition: all 0.2s ease;
   min-height: 240px;
 }
 
 .empty-card:hover {
-  border-color: #1677ff;
-  background: #f0f9ff;
+  border-color: #3b82f6;
+  background: #eff6ff;
 }
 
 .empty-card .add-icon {
   font-size: 32px;
-  color: #bfbfbf;
+  color: #94a3b8;
 }
 
 .empty-card span {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 加载状态 */
@@ -457,7 +459,7 @@ onMounted(() => {
 /* 表单提示 */
 .form-hint {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 响应式 */

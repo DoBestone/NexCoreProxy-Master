@@ -149,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, MessageOutlined, EyeOutlined, SendOutlined } from '@ant-design/icons-vue'
 import { getMyTickets, createTicket, getTicketDetail, replyMyTicket } from '@/api'
@@ -158,6 +158,8 @@ const loading = ref(false)
 const tickets = ref([])
 const createVisible = ref(false)
 const detailVisible = ref(false)
+
+onDeactivated(() => { createVisible.value = false; detailVisible.value = false })
 const creating = ref(false)
 const replying = ref(false)
 const currentTicket = ref(null)
@@ -269,12 +271,12 @@ onMounted(() => {
 .page-header h1 {
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0 0 4px;
 }
 
 .page-header p {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin: 0;
 }
@@ -284,7 +286,7 @@ onMounted(() => {
 }
 
 .subject-text {
-  color: #1677ff;
+  color: #3b82f6;
   cursor: pointer;
   font-weight: 500;
 }
@@ -303,13 +305,13 @@ onMounted(() => {
 }
 
 .priority-badge.urgent {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .priority-badge.normal {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 /* 状态徽章 */
@@ -322,18 +324,18 @@ onMounted(() => {
 }
 
 .status-badge.open {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .status-badge.closed {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .time-text {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .view-btn {
@@ -341,18 +343,18 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border: none;
   border-radius: 6px;
-  color: #595959;
+  color: #475569;
   cursor: pointer;
   font-size: 13px;
   transition: all 0.15s ease;
 }
 
 .view-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 /* 空状态 */
@@ -363,12 +365,12 @@ onMounted(() => {
 
 .empty-icon {
   font-size: 48px;
-  color: #d9d9d9;
+  color: #cbd5e1;
   margin-bottom: 16px;
 }
 
 .empty-state p {
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 20px;
 }
 
@@ -398,7 +400,7 @@ onMounted(() => {
 }
 
 .meta-item .label {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 13px;
 }
 
@@ -408,7 +410,7 @@ onMounted(() => {
 
 .ticket-content {
   background: white;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 20px;
@@ -419,20 +421,20 @@ onMounted(() => {
   background: #f8fafc;
   font-size: 13px;
   font-weight: 600;
-  color: #595959;
-  border-bottom: 1px solid #f0f0f0;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .content-body {
   padding: 16px;
   font-size: 14px;
   line-height: 1.6;
-  color: #262626;
+  color: #1e293b;
   white-space: pre-wrap;
 }
 
 .replies-section {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
   padding-top: 20px;
   margin-bottom: 20px;
 }
@@ -440,14 +442,14 @@ onMounted(() => {
 .section-title {
   font-size: 15px;
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
   margin-bottom: 16px;
 }
 
 .no-replies {
   text-align: center;
   padding: 24px;
-  color: #8c8c8c;
+  color: #64748b;
   background: #f8fafc;
   border-radius: 10px;
 }
@@ -477,27 +479,27 @@ onMounted(() => {
 }
 
 .reply-header .author.user {
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .reply-header .author.admin {
-  color: #52c41a;
+  color: #16a34a;
 }
 
 .reply-header .time {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .reply-content {
   font-size: 14px;
-  color: #262626;
+  color: #1e293b;
   line-height: 1.6;
 }
 
 /* 回复输入区 */
 .reply-input-section {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
   padding-top: 20px;
 }
 

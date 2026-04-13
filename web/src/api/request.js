@@ -71,6 +71,10 @@ request.interceptors.response.use(
       setTimeout(() => { window.location.href = logoutPath }, 300)
       return Promise.reject(error)
     }
+    if (error.response?.status === 429) {
+      message.warning('请求过于频繁，请稍后再试')
+      return Promise.reject(error)
+    }
     if (!error.response) {
       message.error('网络连接错误')
     } else {

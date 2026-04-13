@@ -1,12 +1,40 @@
 package handler
 
 import (
+	"log"
+	"net"
 	"net/http"
 
 	"nexcoreproxy-master/internal/model"
 
 	"github.com/gin-gonic/gin"
 )
+
+// sanitizeNode 从节点数据中移除敏感字段
+func sanitizeNode(node model.Node) gin.H {
+	return gin.H{
+		"id": node.ID, "name": node.Name, "ip": node.IP,
+		"port": node.Port, "username": node.Username,
+		"sshPort": node.SSHPort, "sshUser": node.SSHUser,
+		"apiPort": node.APIPort,
+		"type": node.Type, "enable": node.Enable, "remark": node.Remark,
+		"status": node.Status, "xrayVersion": node.XrayVersion,
+		"cpu": node.CPU, "memory": node.Memory, "disk": node.Disk,
+		"uptime": node.Uptime, "uploadTotal": node.UploadTotal,
+		"downloadTotal": node.DownloadTotal, "lastSyncAt": node.LastSyncAt,
+		"connected": node.Connected,
+		"createdAt": node.CreatedAt, "updatedAt": node.UpdatedAt,
+	}
+}
+
+// sanitizeNodes 批量脱敏
+func sanitizeNodes(nodes []model.Node) []gin.H {
+	result := make([]gin.H, len(nodes))
+	for i, n := range nodes {
+		result[i] = sanitizeNode(n)
+	}
+	return result
+}
 
 // GetNodes 获取节点列表
 func (h *Handler) GetNodes(c *gin.Context) {
@@ -16,24 +44,7 @@ func (h *Handler) GetNodes(c *gin.Context) {
 		return
 	}
 
-	// 管理端返回节点信息，敏感字段脱敏
-	var result []gin.H
-	for _, n := range nodes {
-		result = append(result, gin.H{
-			"id": n.ID, "name": n.Name, "ip": n.IP, "port": n.Port,
-			"username": n.Username, "password": maskPassword(n.Password),
-			"sshPort": n.SSHPort, "sshUser": n.SSHUser, "sshPassword": maskPassword(n.SSHPassword),
-			"agentKey": n.AgentKey, "apiToken": n.APIToken, "apiPort": n.APIPort,
-			"masterUrl": n.MasterURL, "enable": n.Enable, "remark": n.Remark,
-			"status": n.Status, "xrayVersion": n.XrayVersion,
-			"cpu": n.CPU, "memory": n.Memory, "disk": n.Disk, "uptime": n.Uptime,
-			"uploadTotal": n.UploadTotal, "downloadTotal": n.DownloadTotal,
-			"lastSyncAt": n.LastSyncAt, "connected": n.Connected,
-			"createdAt": n.CreatedAt, "updatedAt": n.UpdatedAt,
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": result})
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": sanitizeNodes(nodes)})
 }
 
 // AddNode 添加节点
@@ -44,35 +55,51 @@ func (h *Handler) AddNode(c *gin.Context) {
 		return
 	}
 
+	// 名称和 IP 校验
+	if len(node.Name) == 0 || len(node.Name) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "节点名称长度需为1-100"})
+		return
+	}
+	if node.IP == "" || (net.ParseIP(node.IP) == nil && len(node.IP) > 255) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "节点地址无效"})
+		return
+	}
+
 	if node.Port == 0 {
 		node.Port = 54321
 	}
 	if node.SSHPort == 0 {
 		node.SSHPort = 22
 	}
+	if node.Port < 1 || node.Port > 65535 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "端口范围无效 (1-65535)"})
+		return
+	}
+	if node.SSHPort < 1 || node.SSHPort > 65535 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "远程端口范围无效 (1-65535)"})
+		return
+	}
 
 	if err := h.node.Create(&node); err != nil {
+		log.Printf("添加节点失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "添加节点失败"})
 		return
 	}
 
-	// 返回完整节点信息
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": node})
+	// 返回脱敏后的节点信息
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": sanitizeNode(node)})
 }
 
 // GetNode 获取节点详情
 func (h *Handler) GetNode(c *gin.Context) {
-	id := c.Param("id")
+	id := parseUint(c.Param("id"))
 	var node model.Node
 	if err := model.GetDB().First(&node, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "节点不存在"})
 		return
 	}
 
-	// 敏感字段脱敏
-	node.Password = maskPassword(node.Password)
-	node.SSHPassword = maskPassword(node.SSHPassword)
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": node})
+	c.JSON(http.StatusOK, gin.H{"success": true, "obj": sanitizeNode(node)})
 }
 
 // UpdateNode 更新节点
@@ -87,6 +114,7 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 		SSHPort     int    `json:"sshPort"`
 		SSHUser     string `json:"sshUser"`
 		SSHPassword string `json:"sshPassword"`
+		Type        string `json:"type"`
 		Remark      string `json:"remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -96,10 +124,43 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 
 	nodeID := parseUint(id)
 
+	// 输入校验
+	if len(req.Name) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "节点名称长度不能超过100"})
+		return
+	}
+	if req.IP != "" && net.ParseIP(req.IP) == nil && len(req.IP) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "节点地址无效"})
+		return
+	}
+	if req.Port != 0 && (req.Port < 1 || req.Port > 65535) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "端口范围无效 (1-65535)"})
+		return
+	}
+	if req.SSHPort != 0 && (req.SSHPort < 1 || req.SSHPort > 65535) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "SSH端口范围无效 (1-65535)"})
+		return
+	}
+	if len(req.Username) > 100 || len(req.SSHUser) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "用户名长度不能超过100"})
+		return
+	}
+	if len(req.Remark) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "备注长度不能超过255"})
+		return
+	}
+
 	// 获取现有节点
 	var existingNode model.Node
 	if err := model.GetDB().First(&existingNode, nodeID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "msg": "节点不存在"})
+		return
+	}
+
+	// 校验节点类型
+	validTypes := map[string]bool{"standalone": true, "relay": true, "backend": true, "": true}
+	if !validTypes[req.Type] {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "无效的节点类型"})
 		return
 	}
 
@@ -111,6 +172,7 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 		"username": req.Username,
 		"ssh_port": req.SSHPort,
 		"ssh_user": req.SSHUser,
+		"type":     req.Type,
 		"remark":   req.Remark,
 	}
 
@@ -147,7 +209,8 @@ func (h *Handler) TestNode(c *gin.Context) {
 	id := parseUint(c.Param("id"))
 
 	if err := h.node.TestConnection(id); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "连接失败: " + err.Error()})
+		log.Printf("测试节点连接失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "连接失败"})
 		return
 	}
 
@@ -160,7 +223,8 @@ func (h *Handler) SyncNode(c *gin.Context) {
 
 	status, err := h.node.SyncStatus(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "同步失败: " + err.Error()})
+		log.Printf("同步节点状态失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "同步失败"})
 		return
 	}
 
@@ -173,7 +237,8 @@ func (h *Handler) GetNodeInbounds(c *gin.Context) {
 
 	inbounds, err := h.node.GetInbounds(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取入站列表失败: " + err.Error()})
+		log.Printf("获取节点入站列表失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取入站列表失败"})
 		return
 	}
 
@@ -191,7 +256,8 @@ func (h *Handler) AddNodeInbound(c *gin.Context) {
 	}
 
 	if err := h.node.AddInbound(id, inbound); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "添加入站失败: " + err.Error()})
+		log.Printf("添加节点入站失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "添加入站失败"})
 		return
 	}
 
@@ -204,7 +270,8 @@ func (h *Handler) DeleteNodeInbound(c *gin.Context) {
 	inboundId := parseInt(c.Param("inboundId"))
 
 	if err := h.node.DeleteInbound(id, inboundId); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "删除入站失败: " + err.Error()})
+		log.Printf("删除节点入站失败 [id=%d, inbound=%d]: %v", id, inboundId, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "删除入站失败"})
 		return
 	}
 
@@ -219,10 +286,14 @@ func (h *Handler) ToggleNodeInbound(c *gin.Context) {
 	var req struct {
 		Enable bool `json:"enable"`
 	}
-	c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
 
 	if err := h.node.SSHEnableInbound(id, inboundId, req.Enable); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "操作失败: " + err.Error()})
+		log.Printf("切换入站状态失败 [id=%d, inbound=%d]: %v", id, inboundId, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "操作失败"})
 		return
 	}
 
@@ -235,7 +306,8 @@ func (h *Handler) SSHNodeStatus(c *gin.Context) {
 
 	result, err := h.node.SSHGetStatus(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		log.Printf("SSH获取节点状态失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取状态失败"})
 		return
 	}
 
@@ -247,7 +319,8 @@ func (h *Handler) SSHRestartXray(c *gin.Context) {
 	id := parseUint(c.Param("id"))
 
 	if err := h.node.SSHRestartXray(id); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "重启失败: " + err.Error()})
+		log.Printf("SSH重启Xray失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "重启失败"})
 		return
 	}
 
@@ -260,7 +333,8 @@ func (h *Handler) GetNodeAPIToken(c *gin.Context) {
 
 	token, err := h.node.GetAPIToken(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		log.Printf("获取节点API Token失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取Token失败"})
 		return
 	}
 
@@ -273,7 +347,8 @@ func (h *Handler) GenNodeAPIToken(c *gin.Context) {
 
 	token, err := h.node.GenAPIToken(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		log.Printf("生成节点API Token失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "生成Token失败"})
 		return
 	}
 
@@ -285,7 +360,8 @@ func (h *Handler) RestartNodeXray(c *gin.Context) {
 	id := parseUint(c.Param("id"))
 
 	if err := h.node.RestartXray(id); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "重启失败: " + err.Error()})
+		log.Printf("重启节点Xray失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "重启失败"})
 		return
 	}
 
@@ -296,29 +372,28 @@ func (h *Handler) RestartNodeXray(c *gin.Context) {
 func (h *Handler) InstallNode(c *gin.Context) {
 	id := c.Param("id")
 
-	node, err := h.node.GetByID(parseUint(id))
-	if err != nil {
+	if _, err := h.node.GetByID(parseUint(id)); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "节点不存在"})
 		return
 	}
 
 	if err := h.node.Install(parseUint(id)); err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "安装失败: " + err.Error()})
+		log.Printf("安装节点失败 [id=%s]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "安装失败"})
 		return
 	}
 
 	// 重新获取更新后的节点信息
-	node, _ = h.node.GetByID(parseUint(id))
+	updatedNode, err := h.node.GetByID(parseUint(id))
+	if err != nil || updatedNode == nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "msg": "安装成功"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"msg":     "安装成功",
-		"obj": gin.H{
-			"ip":       node.IP,
-			"port":     node.Port,
-			"username": node.Username,
-			"password": node.Password,
-		},
+		"obj":     sanitizeNode(*updatedNode),
 	})
 }
 
@@ -356,7 +431,8 @@ func (h *Handler) ResetNodeCredentials(c *gin.Context) {
 	// SSH连接执行重置
 	err = h.node.ResetCredentials(id, req.Username, req.Password)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		log.Printf("重置节点凭证失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "重置失败"})
 		return
 	}
 
@@ -369,7 +445,8 @@ func (h *Handler) CheckNodeUpdate(c *gin.Context) {
 
 	result, err := h.node.CheckUpdate(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		log.Printf("检查节点更新失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "检查更新失败"})
 		return
 	}
 
@@ -382,7 +459,8 @@ func (h *Handler) UpdateNodeAgent(c *gin.Context) {
 
 	output, err := h.node.UpdateAgent(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error(), "output": output})
+		log.Printf("更新节点Agent失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "更新失败"})
 		return
 	}
 

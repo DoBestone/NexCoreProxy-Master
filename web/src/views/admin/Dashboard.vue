@@ -5,7 +5,7 @@
       <div class="banner-content">
         <div class="banner-text">
           <h1>欢迎回来，{{ username }}</h1>
-          <p>NexCore 聚合邮箱管理控制台，一切尽在掌控</p>
+          <p>NexCore 代理节点管理控制台，一切尽在掌控</p>
         </div>
         <div class="banner-illustration">
           <div class="illustration-circle circle-1"></div>
@@ -163,14 +163,14 @@ const stats = ref({
   totalDownload: 0
 })
 
-const username = ref(localStorage.getItem('username') || 'Admin')
+const username = ref(localStorage.getItem('admin_username') || 'Admin')
 
 const columns = [
   { title: '节点', key: 'name' },
   { title: '状态', key: 'status', width: 100 },
   { title: '资源使用', key: 'resource', width: 220 },
   { title: '流量统计', key: 'traffic', width: 140 },
-  { title: 'Xray版本', dataIndex: 'xrayVersion', key: 'xrayVersion', width: 100 },
+  { title: '内核版本', dataIndex: 'xrayVersion', key: 'xrayVersion', width: 100 },
   { title: '操作', key: 'action', width: 120, fixed: 'right' }
 ]
 
@@ -234,7 +234,7 @@ onMounted(() => {
 
 /* 欢迎横幅 */
 .welcome-banner {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 50%, #13c2c2 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #0891b2 100%);
   border-radius: 16px;
   padding: 32px;
   margin-bottom: 24px;
@@ -348,23 +348,23 @@ onMounted(() => {
 }
 
 .stat-card-blue .stat-icon {
-  background: linear-gradient(135deg, #e6f4ff 0%, #bae0ff 100%);
-  color: #1677ff;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #3b82f6;
 }
 
 .stat-card-green .stat-icon {
-  background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
-  color: #52c41a;
+  background: linear-gradient(135deg, #f0fdf4 0%, #bbf7d0 100%);
+  color: #16a34a;
 }
 
 .stat-card-red .stat-icon {
-  background: linear-gradient(135deg, #fff2f0 0%, #ffccc7 100%);
-  color: #ff4d4f;
+  background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+  color: #dc2626;
 }
 
 .stat-card-purple .stat-icon {
   background: linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%);
-  color: #722ed1;
+  color: #7c3aed;
 }
 
 .stat-content {
@@ -374,13 +374,13 @@ onMounted(() => {
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   line-height: 1.2;
 }
 
 .stat-label {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
   margin-top: 4px;
 }
 
@@ -394,8 +394,8 @@ onMounted(() => {
 }
 
 .stat-trend.up {
-  background: #f6ffed;
-  color: #52c41a;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 /* 节点卡片 */
@@ -411,7 +411,7 @@ onMounted(() => {
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 /* 节点名称 */
@@ -423,12 +423,12 @@ onMounted(() => {
 
 .name-text {
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
 }
 
 .ip-text {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 状态徽章 */
@@ -442,18 +442,18 @@ onMounted(() => {
 }
 
 .status-online {
-  background: #f6ffed;
-  color: #52c41a;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .status-offline {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .status-unknown {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 /* 资源使用条 */
@@ -471,7 +471,7 @@ onMounted(() => {
 
 .resource-label {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
   width: 28px;
   flex-shrink: 0;
 }
@@ -479,25 +479,25 @@ onMounted(() => {
 .resource-bar {
   flex: 1;
   height: 6px;
-  background: #f0f0f0;
+  background: #e2e8f0;
   border-radius: 3px;
   overflow: hidden;
 }
 
 .resource-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 3px;
   transition: width 0.3s ease;
 }
 
 .resource-fill.memory {
-  background: linear-gradient(90deg, #13c2c2 0%, #36cfc9 100%);
+  background: linear-gradient(90deg, #0891b2 0%, #36cfc9 100%);
 }
 
 .resource-value {
   font-size: 12px;
-  color: #595959;
+  color: #475569;
   width: 42px;
   text-align: right;
   flex-shrink: 0;
@@ -515,15 +515,15 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #595959;
+  color: #475569;
 }
 
 .traffic-item.upload {
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .traffic-item.download {
-  color: #13c2c2;
+  color: #0891b2;
 }
 
 /* 动画 */

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,22 @@ var loginRateLimiter = struct {
 	attempts map[string]*loginAttempt
 }{
 	attempts: make(map[string]*loginAttempt),
+}
+
+func init() {
+	// 后台协程：每10分钟清理过期的限速记录，防止内存泄露
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		for range ticker.C {
+			loginRateLimiter.mu.Lock()
+			for ip, attempt := range loginRateLimiter.attempts {
+				if time.Since(attempt.lastFail) > loginLockDuration {
+					delete(loginRateLimiter.attempts, ip)
+				}
+			}
+			loginRateLimiter.mu.Unlock()
+		}
+	}()
 }
 
 type loginAttempt struct {
@@ -79,6 +96,27 @@ func clearLoginFailure(ip string) {
 // usernameRegex 用户名格式：字母数字下划线短横线
 var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,50}$`)
 
+// validatePasswordStrength 密码强度校验：长度8-128，至少包含字母和数字
+func validatePasswordStrength(password string) string {
+	if len(password) < 8 || len(password) > 128 {
+		return "密码长度需为8-128位"
+	}
+	hasLetter := false
+	hasDigit := false
+	for _, ch := range password {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+			hasLetter = true
+		}
+		if ch >= '0' && ch <= '9' {
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return "密码需同时包含字母和数字"
+	}
+	return ""
+}
+
 // Login 登录
 func (h *Handler) Login(c *gin.Context) {
 	// 登录限速检查
@@ -129,8 +167,9 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// 设置 cookie (Secure=true 用于 HTTPS, HttpOnly=true 防 XSS)
+	// 设置 cookie (Secure=true 用于 HTTPS, HttpOnly=true 防 XSS, SameSite=Lax 防 CSRF)
 	isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("token", token, 3600*24, "/", "", isSecure, true)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -178,8 +217,8 @@ func (h *Handler) verifyTurnstile(token, secretKey, clientIP string) bool {
 func (h *Handler) Register(c *gin.Context) {
 	var req struct {
 		Username       string `json:"username" binding:"required,min=3,max=50"`
-		Password       string `json:"password" binding:"required,min=6"`
-		Email          string `json:"email"`
+		Password       string `json:"password" binding:"required,min=6,max=128"`
+		Email          string `json:"email" binding:"omitempty,email"`
 		InviteCode     string `json:"inviteCode"`
 		TurnstileToken string `json:"turnstileToken"`
 	}
@@ -192,6 +231,12 @@ func (h *Handler) Register(c *gin.Context) {
 	// 用户名格式校验：仅允许字母、数字、下划线、短横线
 	if !usernameRegex.MatchString(req.Username) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "用户名只能包含字母、数字、下划线和短横线"})
+		return
+	}
+
+	// 密码强度校验
+	if msg := validatePasswordStrength(req.Password); msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": msg})
 		return
 	}
 
@@ -212,15 +257,23 @@ func (h *Handler) Register(c *gin.Context) {
 
 	// 检查用户名是否存在
 	var existUser model.User
-	if db.Where("username = ?", req.Username).First(&existUser).Error == nil {
+	err := db.Where("username = ?", req.Username).First(&existUser).Error
+	if err == nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "用户名已存在"})
+		return
+	} else if err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "系统错误"})
 		return
 	}
 
 	// 检查邮箱是否已使用
 	if req.Email != "" {
-		if db.Where("email = ?", req.Email).First(&existUser).Error == nil {
+		err = db.Where("email = ?", req.Email).First(&existUser).Error
+		if err == nil {
 			c.JSON(http.StatusOK, gin.H{"success": false, "msg": "邮箱已被使用"})
+			return
+		} else if err != gorm.ErrRecordNotFound {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "系统错误"})
 			return
 		}
 	}
@@ -258,8 +311,12 @@ func (h *Handler) Register(c *gin.Context) {
 			return err
 		}
 
-		// 生成邀请码
-		inviteCode := fmt.Sprintf("NC%06d", user.ID)
+		// 生成随机邀请码
+		inviteBytes := make([]byte, 4)
+		if _, err := crand.Read(inviteBytes); err != nil {
+			return fmt.Errorf("生成邀请码失败: %v", err)
+		}
+		inviteCode := fmt.Sprintf("NC%x", inviteBytes)
 		return tx.Model(&user).Update("invite_code", inviteCode).Error
 	})
 	if err != nil {
@@ -322,8 +379,8 @@ func (h *Handler) UpdatePassword(c *gin.Context) {
 		return
 	}
 
-	if len(req.NewPassword) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "新密码长度不能少于6位"})
+	if msg := validatePasswordStrength(req.NewPassword); msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": msg})
 		return
 	}
 

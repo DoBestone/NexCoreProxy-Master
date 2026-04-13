@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"nexcoreproxy-master/internal/model"
 
@@ -70,8 +71,8 @@ func (h *Handler) UpdateEmailConfig(c *gin.Context) {
 			"from_name": req.FromName,
 			"enable":    req.Enable,
 		}
-		// 只有提供了新的 API Key 才更新（不含脱敏的 ****）
-		if req.APIKey != "" && len(req.APIKey) > 4 && req.APIKey[len(req.APIKey)-4:] != "****" {
+		// 只有提供了新的 API Key 才更新（不含脱敏标记）
+		if req.APIKey != "" && !strings.Contains(req.APIKey, "****") {
 			updates["api_key"] = req.APIKey
 		}
 		if err := db.Model(&config).Updates(updates).Error; err != nil {

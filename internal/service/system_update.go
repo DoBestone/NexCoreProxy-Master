@@ -65,7 +65,10 @@ func (c *NexCoreProxyClient) GetLatestRelease() (*NexCoreRelease, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("代理返回错误 %d, 读取响应失败: %v", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("代理返回错误 %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -93,7 +96,10 @@ func (c *NexCoreProxyClient) ListReleases() ([]NexCoreRelease, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("代理返回错误 %d, 读取响应失败: %v", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("代理返回错误 %d: %s", resp.StatusCode, string(body))
 	}
 

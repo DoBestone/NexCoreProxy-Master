@@ -179,17 +179,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0 0 8px;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-header p {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin: 0;
 }
@@ -223,22 +223,22 @@ onMounted(() => {
 }
 
 .info-label {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
 }
 
 .info-value {
   font-weight: 500;
-  color: #262626;
+  color: #1e293b;
 }
 
 .info-value.balance {
-  color: #ff4d4f;
+  color: #dc2626;
   font-size: 16px;
 }
 
 .info-value.expired {
-  color: #ff4d4f;
+  color: #dc2626;
 }
 
 @media (max-width: 768px) {

@@ -54,12 +54,23 @@ export const installNode = (id) => request.post(`/nodes/${id}/install`)
 export const getNodeInbounds = (id) => request.get(`/nodes/${id}/inbounds`)
 export const addNodeInbound = (id, data) => request.post(`/nodes/${id}/inbounds`, data)
 export const deleteNodeInbound = (nodeId, inboundId) => request.delete(`/nodes/${nodeId}/inbounds/${inboundId}`)
+export const toggleNodeInbound = (nodeId, inboundId, enable) => request.post(`/nodes/${nodeId}/inbounds/${inboundId}/toggle`, { enable })
 export const restartNodeXray = (id) => request.post(`/nodes/${id}/restart`)
+export const sshNodeStatus = (id) => request.post(`/nodes/${id}/ssh-status`)
+export const getNodeAPIToken = (id) => request.get(`/nodes/${id}/api-token`)
+export const genNodeAPIToken = (id) => request.post(`/nodes/${id}/api-token`)
 export const resetNodeCredentials = (id, data) => request.post(`/nodes/${id}/reset-credentials`, data)
 export const checkNodeUpdate = (id) => request.post(`/nodes/${id}/check-update`)
 export const updateNodeAgent = (id) => request.post(`/nodes/${id}/update-agent`)
 
+// 中转规则
+export const getRelayRules = () => request.get('/relay-rules')
+export const createRelayRule = (data) => request.post('/relay-rules', data)
+export const deleteRelayRule = (id) => request.delete(`/relay-rules/${id}`)
+export const syncRelayRule = (id) => request.post(`/relay-rules/${id}/sync`)
+
 // 套餐管理
+export const getAllPackages = () => request.get('/admin/packages')
 export const addPackage = (data) => request.post('/packages', data)
 export const updatePackage = (id, data) => request.put(`/packages/${id}`, data)
 export const deletePackage = (id) => request.delete(`/packages/${id}`)

@@ -97,15 +97,19 @@ func (h *Handler) GetMyNodes(c *gin.Context) {
 	userID := h.getCurrentUserID(c)
 
 	var userNodes []model.UserNode
-	model.GetDB().Where("user_id = ? AND enable = ?", userID, true).Preload("Node").Find(&userNodes)
+	if err := model.GetDB().Where("user_id = ? AND enable = ?", userID, true).Preload("Node").Find(&userNodes).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "获取节点失败"})
+		return
+	}
 
-	var result []gin.H
+	result := make([]gin.H, 0) // 确保返回 [] 而非 null
 	for _, un := range userNodes {
 		if un.Node.ID > 0 {
 			result = append(result, gin.H{
 				"id":       un.Node.ID,
 				"name":     un.Node.Name,
 				"ip":       un.Node.IP,
+				"type":     un.Node.Type,
 				"status":   un.Node.Status,
 				"protocol": "multi",
 			})
@@ -126,14 +130,23 @@ func (h *Handler) PanelProxy(c *gin.Context) {
 		return
 	}
 
-	// SSRF 防护：验证目标 IP 不是内部地址
-	if ip := net.ParseIP(node.IP); ip != nil {
-		if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			c.JSON(http.StatusForbidden, gin.H{"success": false, "msg": "目标地址不允许"})
+	// SSRF 防护：解析目标地址并验证非内部地址
+	nodeIP := net.ParseIP(node.IP)
+	resolvedHost := node.IP // 使用解析后的 IP 构建 URL，防止 DNS rebinding
+	if nodeIP == nil {
+		// 域名情况：先 DNS 解析
+		addrs, err := net.LookupHost(node.IP)
+		if err != nil || len(addrs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "无法解析节点地址"})
 			return
 		}
-		// 阻止云元数据端点
-		if ip.Equal(net.ParseIP("169.254.169.254")) {
+		nodeIP = net.ParseIP(addrs[0])
+		resolvedHost = addrs[0] // 使用解析后的 IP，防止二次解析到不同地址
+	}
+	if nodeIP != nil {
+		if nodeIP.IsLoopback() || nodeIP.IsUnspecified() || nodeIP.IsLinkLocalUnicast() ||
+			nodeIP.IsLinkLocalMulticast() || nodeIP.IsMulticast() || nodeIP.IsPrivate() ||
+			nodeIP.Equal(net.ParseIP("169.254.169.254")) {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "msg": "目标地址不允许"})
 			return
 		}
@@ -145,8 +158,8 @@ func (h *Handler) PanelProxy(c *gin.Context) {
 		path = "/"
 	}
 
-	// 构建目标 URL
-	targetURL := fmt.Sprintf("http://%s:%d%s", node.IP, node.Port, path)
+	// 构建目标 URL（使用解析后的 IP 防止 DNS rebinding 攻击）
+	targetURL := fmt.Sprintf("http://%s:%d%s", resolvedHost, node.Port, path)
 
 	// 添加查询参数
 	if c.Request.URL.RawQuery != "" {
@@ -166,7 +179,7 @@ func (h *Handler) PanelProxy(c *gin.Context) {
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-		req.Host = fmt.Sprintf("%s:%d", node.IP, node.Port)
+		req.Host = fmt.Sprintf("%s:%d", resolvedHost, node.Port)
 		req.Header.Set("X-Forwarded-Host", c.Request.Host)
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req.Header.Set("X-Real-IP", c.ClientIP())

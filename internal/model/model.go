@@ -50,6 +50,7 @@ func AutoMigrate() error {
 		&Announcement{},
 		&EmailConfig{},
 		&NexCoreConfig{},
+		&RelayRule{},
 	)
 }
 
@@ -88,7 +89,7 @@ type Announcement struct {
 type EmailConfig struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	APIURL    string    `json:"apiUrl" gorm:"column:api_url;size:255"`  // SMTP Lite API 地址
-	APIKey    string    `json:"apiKey" gorm:"column:api_key;size:255"`  // API Key
+	APIKey    string    `json:"-" gorm:"column:api_key;size:255"` // API Key
 	FromName  string    `json:"fromName" gorm:"size:100"`               // 发件人名称
 	Enable    bool      `json:"enable" gorm:"default:false"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -107,9 +108,10 @@ type Node struct {
 	SSHUser       string     `json:"sshUser" gorm:"size:50"`
 	SSHPassword   string     `json:"-" gorm:"size:255"`
 	AgentKey      string     `json:"agentKey" gorm:"size:64;uniqueIndex"` // Agent连接密钥
-	APIToken      string     `json:"apiToken" gorm:"size:255"`            // ncp-api Token
+	APIToken      string     `json:"-" gorm:"size:255"`                   // ncp-api Token
 	APIPort       int        `json:"apiPort" gorm:"default:54322"`        // ncp-api 端口
 	MasterURL     string     `json:"masterUrl" gorm:"size:255"`           // Master地址
+	Type          string     `json:"type" gorm:"size:20;default:'standalone';index"` // standalone, relay, backend
 	Enable        bool       `json:"enable" gorm:"default:true"`
 	Remark        string     `json:"remark" gorm:"size:255"`
 	Status        string     `json:"status" gorm:"size:20;default:'unknown'"`
@@ -217,6 +219,25 @@ type TrafficLog struct {
 	Download   int64     `json:"download"`
 	RecordedAt time.Time `json:"recordedAt" gorm:"index:idx_node_recorded"`
 	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// RelayRule 中转规则
+type RelayRule struct {
+	ID               uint      `json:"id" gorm:"primaryKey"`
+	RelayNodeID      uint      `json:"relayNodeId" gorm:"index:idx_relay_backend,priority:1"`
+	BackendNodeID    uint      `json:"backendNodeId" gorm:"index:idx_relay_backend,priority:2"`
+	RelayInboundPort int       `json:"relayInboundPort"`                  // 中转节点上的入站端口
+	RelayInboundTag  string    `json:"relayInboundTag" gorm:"size:100"`  // Xray inbound tag
+	RelayOutboundTag string    `json:"relayOutboundTag" gorm:"size:100"` // Xray outbound tag
+	Protocol         string    `json:"protocol" gorm:"size:20"`           // vmess/vless/trojan/shadowsocks
+	Enable           bool      `json:"enable" gorm:"default:true"`
+	Remark           string    `json:"remark" gorm:"size:255"`
+	SyncStatus       string    `json:"syncStatus" gorm:"size:20;default:'pending'"` // pending/synced/error
+	SyncError        string    `json:"syncError" gorm:"size:500"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+	RelayNode        Node      `json:"relayNode" gorm:"foreignKey:RelayNodeID"`
+	BackendNode      Node      `json:"backendNode" gorm:"foreignKey:BackendNodeID"`
 }
 
 // NexCoreConfig NexCore 代理配置（用于在线更新）

@@ -51,8 +51,8 @@
       <div class="progress-wrapper">
         <a-progress 
           :percent="percent" 
-          :strokeColor="percent > 80 ? '#ff4d4f' : '#1677ff'"
-          :trailColor="'#f0f0f0'"
+          :strokeColor="percent > 80 ? '#dc2626' : '#3b82f6'"
+          :trailColor="'#e2e8f0'"
           :strokeWidth="16"
         />
         <div class="progress-info">
@@ -175,7 +175,7 @@ const initTrafficChart = () => {
       trigger: 'axis',
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderColor: '#e8e8e8',
-      textStyle: { color: '#262626' },
+      textStyle: { color: '#1e293b' },
       formatter: (params) => {
         let result = `<div style="font-weight:600;margin-bottom:8px">${params[0].axisValue}</div>`
         params.forEach(item => {
@@ -205,15 +205,15 @@ const initTrafficChart = () => {
       boundaryGap: false,
       data: data.map(d => d.date),
       axisLine: { lineStyle: { color: '#e8e8e8' } },
-      axisLabel: { color: '#8c8c8c' }
+      axisLabel: { color: '#64748b' }
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f0f0f0' } },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
       axisLabel: {
-        color: '#8c8c8c',
+        color: '#64748b',
         formatter: (value) => formatTraffic(value)
       }
     },
@@ -224,12 +224,12 @@ const initTrafficChart = () => {
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        lineStyle: { width: 2, color: '#1677ff' },
-        itemStyle: { color: '#1677ff' },
+        lineStyle: { width: 2, color: '#3b82f6' },
+        itemStyle: { color: '#3b82f6' },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(22, 119, 255, 0.2)' },
-            { offset: 1, color: 'rgba(22, 119, 255, 0.02)' }
+            { offset: 0, color: 'rgba(59, 130, 246, 0.2)' },
+            { offset: 1, color: 'rgba(59, 130, 246, 0.02)' }
           ])
         },
         data: data.map(d => d.upload)
@@ -240,12 +240,12 @@ const initTrafficChart = () => {
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        lineStyle: { width: 2, color: '#13c2c2' },
-        itemStyle: { color: '#13c2c2' },
+        lineStyle: { width: 2, color: '#0891b2' },
+        itemStyle: { color: '#0891b2' },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(19, 194, 194, 0.2)' },
-            { offset: 1, color: 'rgba(19, 194, 194, 0.02)' }
+            { offset: 0, color: 'rgba(8, 145, 178, 0.2)' },
+            { offset: 1, color: 'rgba(8, 145, 178, 0.02)' }
           ])
         },
         data: data.map(d => d.download)
@@ -296,7 +296,7 @@ const initNodeChart = async () => {
       trigger: 'item',
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderColor: '#e8e8e8',
-      textStyle: { color: '#262626' },
+      textStyle: { color: '#1e293b' },
       formatter: (params) => {
         return `<div style="font-weight:600">${params.name}</div>
                 <div>流量: ${formatTraffic(params.value)}</div>
@@ -335,7 +335,7 @@ const initNodeChart = async () => {
           show: false
         },
         data: nodeData,
-        color: ['#1677ff', '#13c2c2', '#fa8c16', '#722ed1', '#eb2f96', '#52c41a']
+        color: ['#3b82f6', '#0891b2', '#f59e0b', '#7c3aed', '#eb2f96', '#16a34a']
       }
     ]
   }
@@ -395,12 +395,12 @@ onUnmounted(() => {
 .page-header h1 {
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0 0 4px;
 }
 
 .page-header p {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin: 0;
 }
@@ -441,29 +441,29 @@ onUnmounted(() => {
 }
 
 .stat-card.used .stat-icon {
-  background: linear-gradient(135deg, #e6f4ff 0%, #bae0ff 100%);
-  color: #1677ff;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #3b82f6;
 }
 
 .stat-card.limit .stat-icon {
-  background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
-  color: #52c41a;
+  background: linear-gradient(135deg, #f0fdf4 0%, #bbf7d0 100%);
+  color: #16a34a;
 }
 
 .stat-card.remain .stat-icon {
-  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
-  color: #fa8c16;
+  background: linear-gradient(135deg, #fffbeb 0%, #ffe7ba 100%);
+  color: #f59e0b;
 }
 
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
 }
 
 .stat-label {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
   margin-top: 4px;
 }
 
@@ -481,7 +481,7 @@ onUnmounted(() => {
 }
 
 .card-title .anticon {
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .progress-wrapper {
@@ -506,12 +506,12 @@ onUnmounted(() => {
 .percent-text {
   font-size: 32px;
   font-weight: 700;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .detail-text {
   font-size: 14px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 警告提示 */
@@ -520,9 +520,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: #fff2f0;
+  background: #fef2f2;
   border-radius: 10px;
-  color: #ff4d4f;
+  color: #dc2626;
   font-size: 14px;
   margin-top: 16px;
 }

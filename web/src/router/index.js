@@ -44,6 +44,12 @@ const routes = [
         meta: { title: '节点管理', icon: 'CloudServerOutlined' }
       },
       {
+        path: 'relay-rules',
+        name: 'RelayRules',
+        component: () => import('@/views/admin/RelayRules.vue'),
+        meta: { title: '中转规则', icon: 'SwapOutlined' }
+      },
+      {
         path: 'users',
         name: 'Users',
         component: () => import('@/views/admin/Users.vue'),

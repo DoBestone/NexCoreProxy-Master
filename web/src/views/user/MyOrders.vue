@@ -109,12 +109,12 @@ onMounted(() => {
 .page-header h1 {
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0 0 4px;
 }
 
 .page-header p {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin: 0;
 }
@@ -126,7 +126,7 @@ onMounted(() => {
 .order-no {
   font-family: 'SF Mono', Monaco, monospace;
   font-size: 13px;
-  color: #595959;
+  color: #475569;
 }
 
 .package-name {
@@ -135,12 +135,12 @@ onMounted(() => {
 
 .amount {
   font-weight: 600;
-  color: #ff4d4f;
+  color: #dc2626;
 }
 
 .time-text {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 状态徽章 */
@@ -153,23 +153,23 @@ onMounted(() => {
 }
 
 .status-badge.pending {
-  background: #fff7e6;
-  color: #d46b08;
+  background: #fffbeb;
+  color: #b45309;
 }
 
 .status-badge.paid {
-  background: #f6ffed;
-  color: #52c41a;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .status-badge.cancelled {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .status-badge.refunded {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* 空状态 */
@@ -180,12 +180,12 @@ onMounted(() => {
 
 .empty-icon {
   font-size: 48px;
-  color: #d9d9d9;
+  color: #cbd5e1;
   margin-bottom: 16px;
 }
 
 .empty-state p {
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 20px;
 }
 

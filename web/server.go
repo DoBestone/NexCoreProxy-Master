@@ -29,6 +29,10 @@ func NewServer(port int, services *service.Services) *Server {
 	// CORS 中间件
 	engine.Use(corsMiddleware())
 
+	if os.Getenv("CORS_ORIGINS") == "" || os.Getenv("CORS_ORIGINS") == "*" {
+		log.Println("[安全警告] CORS_ORIGINS 未设置，允许所有来源。生产环境请设置明确的域名列表。")
+	}
+
 	srv := &Server{
 		port:    port,
 		engine:  engine,
@@ -53,7 +57,7 @@ func corsMiddleware() gin.HandlerFunc {
 		// 检查是否允许该来源
 		allowed := false
 		if allowedOrigins == "" || allowedOrigins == "*" {
-			allowed = true // 开发模式允许所有来源
+			allowed = true // 未配置时允许所有来源（生产环境应设置 CORS_ORIGINS）
 		} else {
 			for _, o := range strings.Split(allowedOrigins, ",") {
 				if strings.TrimSpace(o) == origin {

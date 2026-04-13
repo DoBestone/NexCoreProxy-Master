@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 
 	"nexcoreproxy-master/internal/model"
@@ -40,8 +43,8 @@ func (h *Handler) AddUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "密码不能为空"})
 		return
 	}
-	if len(req.Password) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "密码长度不能少于6位"})
+	if msg := validatePasswordStrength(req.Password); msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": msg})
 		return
 	}
 	if req.Role == "" {
@@ -49,7 +52,8 @@ func (h *Handler) AddUser(c *gin.Context) {
 	}
 
 	if err := h.user.Create(req.Username, req.Password, req.Email, req.Role); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "添加用户失败: " + err.Error()})
+		log.Printf("添加用户失败 [username=%s]: %v", req.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "添加用户失败"})
 		return
 	}
 
@@ -59,21 +63,6 @@ func (h *Handler) AddUser(c *gin.Context) {
 // UpdateUser 更新用户
 func (h *Handler) UpdateUser(c *gin.Context) {
 	id := c.Param("id")
-	var req struct {
-		Username     string  `json:"username"`
-		Password     string  `json:"password"`
-		Email        string  `json:"email"`
-		Role         string  `json:"role"`
-		Balance      float64 `json:"balance"`
-		TrafficLimit int64   `json:"trafficLimit"`
-		Enable       bool    `json:"enable"`
-		Remark       string  `json:"remark"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
-		return
-	}
-
 	userID := parseUint(id)
 
 	// 获取现有用户
@@ -83,25 +72,61 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 构建更新数据
-	updates := map[string]interface{}{
-		"username":      req.Username,
-		"email":         req.Email,
-		"role":          req.Role,
-		"balance":       req.Balance,
-		"traffic_limit": req.TrafficLimit,
-		"enable":        req.Enable,
-		"remark":        req.Remark,
+	// 解析原始 JSON，仅更新请求中明确提供的字段
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
 	}
 
-	// 只有提供了密码才更新
-	if req.Password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "密码加密失败"})
+	var rawJSON map[string]json.RawMessage
+	if err := json.Unmarshal(bodyBytes, &rawJSON); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
+		return
+	}
+
+	// 字段映射：JSON key → DB column
+	fieldMap := map[string]string{
+		"username":     "username",
+		"email":        "email",
+		"role":         "role",
+		"balance":      "balance",
+		"trafficLimit": "traffic_limit",
+		"enable":       "enable",
+		"remark":       "remark",
+	}
+
+	updates := map[string]interface{}{}
+	for jsonKey, dbCol := range fieldMap {
+		if raw, ok := rawJSON[jsonKey]; ok {
+			var val interface{}
+			if err := json.Unmarshal(raw, &val); err != nil {
+				continue
+			}
+			updates[dbCol] = val
+		}
+	}
+
+	// 密码单独处理：仅在提供且非空时才更新
+	if raw, ok := rawJSON["password"]; ok {
+		var pwd string
+		if err := json.Unmarshal(raw, &pwd); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "密码格式错误"})
 			return
 		}
-		updates["password"] = string(hashedPassword)
+		if pwd != "" {
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "msg": "密码加密失败"})
+				return
+			}
+			updates["password"] = string(hashedPassword)
+		}
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+		return
 	}
 
 	if err := model.GetDB().Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {

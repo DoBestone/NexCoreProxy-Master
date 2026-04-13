@@ -341,8 +341,8 @@ func (h *Handler) SystemProxyConfig(c *gin.Context) {
 	}
 
 	token := cfg.RepoToken
-	if len(token) > 8 {
-		token = token[:4] + "****" + token[len(token)-4:]
+	if len(token) > 4 {
+		token = "****" + token[len(token)-4:]
 	} else if token != "" {
 		token = "****"
 	}

@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -73,6 +74,14 @@ func (s *NodeService) GetByID(id uint) (*model.Node, error) {
 // Create 创建节点
 func (s *NodeService) Create(node *model.Node) error {
 	node.Status = "unknown"
+	// 自动生成 AgentKey（唯一索引，不能为空）
+	if node.AgentKey == "" {
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			return fmt.Errorf("生成 AgentKey 失败: %v", err)
+		}
+		node.AgentKey = fmt.Sprintf("%x", b)
+	}
 	return model.GetDB().Create(node).Error
 }
 
@@ -152,7 +161,11 @@ func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
 	for i := range b {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			b[i] = charset[i%len(charset)]
+			continue
+		}
 		b[i] = charset[n.Int64()]
 	}
 	return string(b)
@@ -160,7 +173,10 @@ func generateRandomString(length int) string {
 
 // secureRandomInt 生成加密安全的随机整数
 func secureRandomInt(max int) int {
-	n, _ := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		return 0
+	}
 	return int(n.Int64())
 }
 
@@ -208,7 +224,9 @@ func (s *NodeService) hostKeyCallback() ssh.HostKeyCallback {
 		// 如果节点没有记录过密钥指纹，保存并放行（TOFU）
 		if node.HostKeyFingerprint == "" {
 			log.Printf("[SSH] 首次信任主机 %s 密钥: %s", hostname, fingerprint)
-			model.GetDB().Model(&node).Update("host_key_fingerprint", fingerprint)
+			if err := model.GetDB().Model(&node).Update("host_key_fingerprint", fingerprint).Error; err != nil {
+				log.Printf("[SSH] 保存主机密钥指纹失败: %v", err)
+			}
 			return nil
 		}
 
@@ -316,7 +334,7 @@ func (s *NodeService) syncStatusViaAPI(node *model.Node) (*NodeStatus, error) {
 
 	// 更新数据库
 	now := time.Now()
-	model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
 		"status":         "online",
 		"cpu":            status.CPU,
 		"memory":         status.Memory,
@@ -326,7 +344,9 @@ func (s *NodeService) syncStatusViaAPI(node *model.Node) (*NodeStatus, error) {
 		"upload_total":   status.UploadTotal,
 		"download_total": status.DownloadTotal,
 		"last_sync_at":   now,
-	})
+	}).Error; err != nil {
+		log.Printf("[Sync] 更新节点 %d 状态到数据库失败: %v", node.ID, err)
+	}
 
 	return status, nil
 }
@@ -335,10 +355,12 @@ func (s *NodeService) syncStatusViaAPI(node *model.Node) (*NodeStatus, error) {
 func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 	sshClient, err := s.SSHConnect(node.IP, node.SSHPort, node.SSHUser, node.SSHPassword)
 	if err != nil {
-		model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
+		if dbErr := model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
 			"status":       "offline",
 			"last_sync_at": time.Now(),
-		})
+		}).Error; dbErr != nil {
+			log.Printf("[Sync] 更新节点 %d 离线状态失败: %v", node.ID, dbErr)
+		}
 		return nil, fmt.Errorf("SSH连接失败: %v", err)
 	}
 	defer sshClient.Close()
@@ -380,7 +402,7 @@ func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 	status.Uptime = uint64(uptime)
 
 	// 更新数据库
-	model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Updates(map[string]interface{}{
 		"status":       "online",
 		"cpu":          status.CPU,
 		"memory":       status.Memory,
@@ -388,7 +410,9 @@ func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 		"uptime":       uptime,
 		"xray_version": status.XrayVersion,
 		"last_sync_at": time.Now(),
-	})
+	}).Error; err != nil {
+		log.Printf("[Sync] 更新节点 %d SSH状态到数据库失败: %v", node.ID, err)
+	}
 
 	return status, nil
 }
@@ -412,25 +436,33 @@ func (s *NodeService) refreshAPIToken(node *model.Node) (string, error) {
 	}
 
 	// 保存到数据库
-	model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Update("api_token", token)
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).Update("api_token", token).Error; err != nil {
+		log.Printf("[Token] 保存节点 %d API Token 失败: %v", node.ID, err)
+	}
 
 	return token, nil
 }
 
-// SyncAll 同步所有节点状态
+// SyncAll 同步所有节点状态（限制并发数防止资源耗尽）
 func (s *NodeService) SyncAll() {
 	nodes, err := s.GetAll()
 	if err != nil {
 		return
 	}
+
+	const maxConcurrent = 20
+	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
+
 	for _, node := range nodes {
 		if !node.Enable {
 			continue
 		}
 		wg.Add(1)
+		sem <- struct{}{} // 获取信号量
 		go func(n model.Node) {
 			defer wg.Done()
+			defer func() { <-sem }() // 释放信号量
 			s.SyncStatus(n.ID)
 		}(node)
 	}
@@ -498,6 +530,23 @@ func (s *NodeService) AddInbound(nodeID uint, inbound map[string]interface{}) er
 	if err != nil {
 		return err
 	}
+
+	// 3x-ui 要求 settings/streamSettings 为 JSON 字符串，前端可能发送解析后的对象
+	for _, key := range []string{"settings", "streamSettings"} {
+		if val, ok := inbound[key]; ok {
+			switch val.(type) {
+			case string:
+				// 已经是字符串，无需处理
+			default:
+				b, err := json.Marshal(val)
+				if err != nil {
+					return fmt.Errorf("序列化 %s 失败: %v", key, err)
+				}
+				inbound[key] = string(b)
+			}
+		}
+	}
+
 	return client.AddInbound(inbound)
 }
 
@@ -527,7 +576,9 @@ func (s *NodeService) GetAPIToken(nodeID uint) (string, error) {
 	}
 
 	// 保存到数据库
-	model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Update("api_token", token)
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Update("api_token", token).Error; err != nil {
+		log.Printf("[Token] 保存节点 %d API Token 失败: %v", nodeID, err)
+	}
 
 	return token, nil
 }
@@ -568,7 +619,9 @@ func (s *NodeService) GenAPIToken(nodeID uint) (string, error) {
 	}
 
 	// 保存到数据库
-	model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Update("api_token", token)
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Update("api_token", token).Error; err != nil {
+		return "", fmt.Errorf("保存 Token 到数据库失败: %v", err)
+	}
 
 	return token, nil
 }
@@ -709,7 +762,9 @@ func (s *NodeService) SSHSetPort(nodeID uint, port int) error {
 	}
 
 	// 更新数据库
-	model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Update("port", port)
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Update("port", port).Error; err != nil {
+		return fmt.Errorf("更新端口到数据库失败: %v", err)
+	}
 	return nil
 }
 
@@ -778,7 +833,7 @@ func (s *NodeService) restartXrayViaSSH(node *model.Node) error {
 			return nil
 		}
 		// 记录失败但继续尝试下一个命令
-		fmt.Printf("命令 %s 失败: %v, 输出: %s\n", cmd, err, output)
+		log.Printf("[SSH] 命令 %s 失败: %v, 输出: %s", cmd, err, output)
 	}
 
 	return fmt.Errorf("所有重启命令都失败")
@@ -787,7 +842,11 @@ func (s *NodeService) restartXrayViaSSH(node *model.Node) error {
 // getClient 获取节点客户端
 func (s *NodeService) getClient(nodeID uint) (*NodeClient, error) {
 	if v, ok := s.clients.Load(nodeID); ok {
-		client := v.(*NodeClient)
+		client, ok := v.(*NodeClient)
+		if !ok {
+			s.clients.Delete(nodeID)
+			return nil, fmt.Errorf("节点客户端类型错误")
+		}
 		if client.Token != "" && client.ExpireAt.After(time.Now()) {
 			return client, nil
 		}
@@ -841,6 +900,11 @@ func (s *NodeService) GenerateSubscription(userID uint) (string, error) {
 		return "", err
 	}
 
+	// 禁用用户不生成订阅
+	if !user.Enable {
+		return "", fmt.Errorf("用户已禁用")
+	}
+
 	// 获取用户分配的节点
 	var userNodes []model.UserNode
 	model.GetDB().Where("user_id = ? AND enable = ?", userID, true).Find(&userNodes)
@@ -848,10 +912,23 @@ func (s *NodeService) GenerateSubscription(userID uint) (string, error) {
 	// 获取所有启用的节点
 	nodes, _ := s.GetAll()
 
+	// 批量预加载所有启用的中转规则（避免 N+1 查询）
+	var allRelayRules []model.RelayRule
+	model.GetDB().Where("enable = ?", true).Preload("RelayNode").Find(&allRelayRules)
+	relayRulesByBackend := make(map[uint][]model.RelayRule)
+	for _, rule := range allRelayRules {
+		relayRulesByBackend[rule.BackendNodeID] = append(relayRulesByBackend[rule.BackendNodeID], rule)
+	}
+
 	var nodeConfigs []NodeConfig
 	for _, userNode := range userNodes {
 		for _, node := range nodes {
 			if node.ID == userNode.NodeID {
+				// 中转节点本身不直接出现在订阅中
+				if node.Type == "relay" {
+					continue
+				}
+
 				// 获取节点的入站配置
 				client, err := s.getClient(node.ID)
 				if err != nil {
@@ -863,46 +940,57 @@ func (s *NodeService) GenerateSubscription(userID uint) (string, error) {
 					continue
 				}
 
+				// 判断是否为落地节点（需要生成中转链接）
+				isBackend := node.Type == "backend"
+
 				// 生成每个入站的链接
 				for _, inbound := range inbounds {
-					link := s.generateLink(node, inbound, user)
-					if link != "" {
-						nodeConfigs = append(nodeConfigs, NodeConfig{
-							Name:     node.Name,
-							Protocol: fmt.Sprintf("%v", inbound["protocol"]),
-							Link:     link,
-						})
+					protocol, _ := inbound["protocol"].(string)
+
+					if isBackend {
+						// 落地节点：生成直连链接 + 中转链接
+						link := s.generateLinkWithRemark(node.IP, inbound, node.Name+" [直连]")
+						if link != "" {
+							nodeConfigs = append(nodeConfigs, NodeConfig{
+								Name: node.Name, Protocol: protocol, Link: link,
+							})
+						}
+
+						// 从预加载的中转规则中查找
+						for _, rule := range relayRulesByBackend[node.ID] {
+							if rule.Protocol != protocol || rule.RelayInboundPort == 0 {
+								continue
+							}
+							relayRemark := fmt.Sprintf("%s→%s [中转]", rule.RelayNode.Name, node.Name)
+							relayLink := s.generateLinkWithRemark(rule.RelayNode.IP,
+								map[string]interface{}{
+									"protocol":       protocol,
+									"port":           float64(rule.RelayInboundPort),
+									"remark":         relayRemark,
+									"settings":       inbound["settings"],
+									"streamSettings": inbound["streamSettings"],
+								}, relayRemark)
+							if relayLink != "" {
+								nodeConfigs = append(nodeConfigs, NodeConfig{
+									Name: relayRemark, Protocol: protocol, Link: relayLink,
+								})
+							}
+						}
+					} else {
+						// standalone 节点：现有行为
+						link := s.generateLink(node, inbound, user)
+						if link != "" {
+							nodeConfigs = append(nodeConfigs, NodeConfig{
+								Name: node.Name, Protocol: protocol, Link: link,
+							})
+						}
 					}
 				}
 			}
 		}
 	}
 
-	// 如果用户没有分配节点，返回所有可用节点
-	if len(nodeConfigs) == 0 {
-		for _, node := range nodes {
-			client, err := s.getClient(node.ID)
-			if err != nil {
-				continue
-			}
-
-			inbounds, err := client.GetInbounds()
-			if err != nil {
-				continue
-			}
-
-			for _, inbound := range inbounds {
-				link := s.generateLink(node, inbound, user)
-				if link != "" {
-					nodeConfigs = append(nodeConfigs, NodeConfig{
-						Name:     node.Name,
-						Protocol: fmt.Sprintf("%v", inbound["protocol"]),
-						Link:     link,
-					})
-				}
-			}
-		}
-	}
+	// 用户没有分配节点时返回空订阅（不暴露全部节点）
 
 	// 生成订阅内容
 	var links []string
@@ -919,31 +1007,157 @@ func (s *NodeService) GenerateSubscription(userID uint) (string, error) {
 	return base64.StdEncoding.EncodeToString([]byte(subContent)), nil
 }
 
+// getInboundField 从 inbound map 中获取字段的 JSON 字符串
+// 3x-ui 返回的 settings/streamSettings 是 JSON 字符串，不是对象
+func getInboundField(inbound map[string]interface{}, key string) string {
+	val := inbound[key]
+	if val == nil {
+		return "{}"
+	}
+	// 如果已经是字符串（3x-ui API 返回 JSON 字符串）
+	if s, ok := val.(string); ok {
+		return s
+	}
+	// 如果是 map/slice（可能被二次解析），序列化回 JSON
+	b, err := json.Marshal(val)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // generateLink 生成节点链接
 func (s *NodeService) generateLink(node model.Node, inbound map[string]interface{}, _ model.User) string {
 	protocol, _ := inbound["protocol"].(string)
-	port, _ := inbound["port"].(float64)
+	portVal, ok := inbound["port"].(float64)
+	if !ok || portVal < 1 || portVal > 65535 {
+		return ""
+	}
+	port := portVal
 	remark, _ := inbound["remark"].(string)
 
-	settings, _ := json.Marshal(inbound["settings"])
+	settings := getInboundField(inbound, "settings")
+	streamSettings := getInboundField(inbound, "streamSettings")
 
-	// 根据协议生成链接
 	switch protocol {
 	case "vmess":
-		return s.generateVMessLink(node.IP, int(port), remark, string(settings))
+		return s.generateVMessLink(node.IP, int(port), remark, settings, streamSettings)
 	case "vless":
-		return s.generateVLESSLink(node.IP, int(port), remark, string(settings))
+		return s.generateVLESSLink(node.IP, int(port), remark, settings, streamSettings)
 	case "trojan":
-		return s.generateTrojanLink(node.IP, int(port), remark, string(settings))
+		return s.generateTrojanLink(node.IP, int(port), remark, settings, streamSettings)
 	case "shadowsocks":
-		return s.generateSSLink(node.IP, int(port), remark, string(settings))
+		return s.generateSSLink(node.IP, int(port), remark, settings)
 	}
 
 	return ""
 }
 
+// generateLinkWithRemark 使用指定 IP 和 remark 生成链接
+func (s *NodeService) generateLinkWithRemark(host string, inbound map[string]interface{}, remark string) string {
+	protocol, _ := inbound["protocol"].(string)
+	portVal, ok := inbound["port"].(float64)
+	if !ok || portVal < 1 || portVal > 65535 {
+		return ""
+	}
+	port := int(portVal)
+	settings := getInboundField(inbound, "settings")
+	streamSettings := getInboundField(inbound, "streamSettings")
+
+	switch protocol {
+	case "vmess":
+		return s.generateVMessLink(host, port, remark, settings, streamSettings)
+	case "vless":
+		return s.generateVLESSLink(host, port, remark, settings, streamSettings)
+	case "trojan":
+		return s.generateTrojanLink(host, port, remark, settings, streamSettings)
+	case "shadowsocks":
+		return s.generateSSLink(host, port, remark, settings)
+	}
+	return ""
+}
+
+// parseStreamSettings 解析 streamSettings JSON
+type streamConfig struct {
+	Network        string                 `json:"network"`
+	Security       string                 `json:"security"`
+	WsSettings     map[string]interface{} `json:"wsSettings"`
+	GrpcSettings   map[string]interface{} `json:"grpcSettings"`
+	TcpSettings    map[string]interface{} `json:"tcpSettings"`
+	TlsSettings    map[string]interface{} `json:"tlsSettings"`
+	RealitySettings map[string]interface{} `json:"realitySettings"`
+}
+
+func parseStreamSettings(raw string) streamConfig {
+	var sc streamConfig
+	json.Unmarshal([]byte(raw), &sc)
+	if sc.Network == "" {
+		sc.Network = "tcp"
+	}
+	if sc.Security == "" {
+		sc.Security = "none"
+	}
+	return sc
+}
+
+// buildStreamParams 构建传输和安全相关的 URL 查询参数
+func buildStreamParams(sc streamConfig) url.Values {
+	params := url.Values{}
+	params.Set("type", sc.Network)
+	params.Set("security", sc.Security)
+
+	switch sc.Network {
+	case "ws":
+		if ws := sc.WsSettings; ws != nil {
+			if path, ok := ws["path"].(string); ok && path != "" {
+				params.Set("path", path)
+			}
+			if headers, ok := ws["headers"].(map[string]interface{}); ok {
+				if host, ok := headers["Host"].(string); ok {
+					params.Set("host", host)
+				}
+			}
+		}
+	case "grpc":
+		if grpc := sc.GrpcSettings; grpc != nil {
+			if sn, ok := grpc["serviceName"].(string); ok {
+				params.Set("serviceName", sn)
+			}
+		}
+	}
+
+	switch sc.Security {
+	case "tls":
+		if tls := sc.TlsSettings; tls != nil {
+			if sni, ok := tls["serverName"].(string); ok && sni != "" {
+				params.Set("sni", sni)
+			}
+			if fp, ok := tls["fingerprint"].(string); ok && fp != "" {
+				params.Set("fp", fp)
+			}
+		}
+	case "reality":
+		if r := sc.RealitySettings; r != nil {
+			if sn, ok := r["serverNames"].([]interface{}); ok && len(sn) > 0 {
+				params.Set("sni", fmt.Sprintf("%v", sn[0]))
+			}
+			if pk, ok := r["publicKey"].(string); ok {
+				params.Set("pbk", pk)
+			}
+			if sid, ok := r["shortIds"].([]interface{}); ok && len(sid) > 0 {
+				params.Set("sid", fmt.Sprintf("%v", sid[0]))
+			}
+			if fp, ok := r["fingerprint"].(string); ok && fp != "" {
+				params.Set("fp", fp)
+			}
+		}
+	}
+
+	return params
+}
+
 // generateVMessLink 生成VMess链接
-func (s *NodeService) generateVMessLink(host string, port int, remark, settings string) string {
+func (s *NodeService) generateVMessLink(host string, port int, remark, settings, streamSettings string) string {
 	var sett struct {
 		Clients []struct {
 			ID string `json:"id"`
@@ -955,6 +1169,7 @@ func (s *NodeService) generateVMessLink(host string, port int, remark, settings 
 		return ""
 	}
 
+	sc := parseStreamSettings(streamSettings)
 	uuid := sett.Clients[0].ID
 
 	vmess := map[string]interface{}{
@@ -964,22 +1179,55 @@ func (s *NodeService) generateVMessLink(host string, port int, remark, settings 
 		"port": port,
 		"id":   uuid,
 		"aid":  0,
-		"net":  "tcp",
+		"net":  sc.Network,
 		"type": "none",
 		"host": "",
 		"path": "",
-		"tls":  "",
+		"tls":  sc.Security,
 	}
 
-	data, _ := json.Marshal(vmess)
+	// 填充传输参数
+	switch sc.Network {
+	case "ws":
+		if ws := sc.WsSettings; ws != nil {
+			if path, ok := ws["path"].(string); ok {
+				vmess["path"] = path
+			}
+			if headers, ok := ws["headers"].(map[string]interface{}); ok {
+				if h, ok := headers["Host"].(string); ok {
+					vmess["host"] = h
+				}
+			}
+		}
+	case "grpc":
+		if grpc := sc.GrpcSettings; grpc != nil {
+			if sn, ok := grpc["serviceName"].(string); ok {
+				vmess["path"] = sn
+			}
+		}
+	}
+
+	if sc.Security == "tls" {
+		if tls := sc.TlsSettings; tls != nil {
+			if sni, ok := tls["serverName"].(string); ok {
+				vmess["sni"] = sni
+			}
+		}
+	}
+
+	data, err := json.Marshal(vmess)
+	if err != nil {
+		return ""
+	}
 	return "vmess://" + base64.StdEncoding.EncodeToString(data)
 }
 
 // generateVLESSLink 生成VLESS链接
-func (s *NodeService) generateVLESSLink(host string, port int, remark, settings string) string {
+func (s *NodeService) generateVLESSLink(host string, port int, remark, settings, streamSettings string) string {
 	var sett struct {
 		Clients []struct {
-			ID string `json:"id"`
+			ID   string `json:"id"`
+			Flow string `json:"flow"`
 		} `json:"clients"`
 	}
 	json.Unmarshal([]byte(settings), &sett)
@@ -988,12 +1236,20 @@ func (s *NodeService) generateVLESSLink(host string, port int, remark, settings 
 		return ""
 	}
 
+	sc := parseStreamSettings(streamSettings)
 	uuid := sett.Clients[0].ID
-	return fmt.Sprintf("vless://%s@%s:%d?security=none#%s", uuid, host, port, remark)
+	params := buildStreamParams(sc)
+
+	if flow := sett.Clients[0].Flow; flow != "" {
+		params.Set("flow", flow)
+	}
+
+	return fmt.Sprintf("vless://%s@%s:%d?%s#%s",
+		uuid, host, port, params.Encode(), url.PathEscape(remark))
 }
 
 // generateTrojanLink 生成Trojan链接
-func (s *NodeService) generateTrojanLink(host string, port int, remark, settings string) string {
+func (s *NodeService) generateTrojanLink(host string, port int, remark, settings, streamSettings string) string {
 	var sett struct {
 		Clients []struct {
 			Password string `json:"password"`
@@ -1005,8 +1261,12 @@ func (s *NodeService) generateTrojanLink(host string, port int, remark, settings
 		return ""
 	}
 
+	sc := parseStreamSettings(streamSettings)
 	password := sett.Clients[0].Password
-	return fmt.Sprintf("trojan://%s@%s:%d?security=none#%s", password, host, port, remark)
+	params := buildStreamParams(sc)
+
+	return fmt.Sprintf("trojan://%s@%s:%d?%s#%s",
+		url.PathEscape(password), host, port, params.Encode(), url.PathEscape(remark))
 }
 
 // generateSSLink 生成Shadowsocks链接
@@ -1022,7 +1282,7 @@ func (s *NodeService) generateSSLink(host string, port int, remark, settings str
 	}
 
 	user := base64.StdEncoding.EncodeToString([]byte(sett.Method + ":" + sett.Password))
-	return fmt.Sprintf("ss://%s@%s:%d#%s", user, host, port, remark)
+	return fmt.Sprintf("ss://%s@%s:%d#%s", user, host, port, url.PathEscape(remark))
 }
 
 // ========== NodeClient 方法 ==========
@@ -1047,7 +1307,10 @@ func (c *NodeClient) Login() error {
 		"username": c.Username,
 		"password": c.Password,
 	}
-	jsonData, _ := json.Marshal(data)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("序列化登录数据失败: %v", err)
+	}
 
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	resp, err := httpClient.Post(loginURL, "application/json", bytes.NewBuffer(jsonData))
@@ -1056,14 +1319,19 @@ func (c *NodeClient) Login() error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %v", err)
+	}
 
 	var result struct {
 		Success bool   `json:"success"`
 		Msg     string `json:"msg"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
 
 	if !result.Success {
 		return fmt.Errorf("登录失败: %s", result.Msg)
@@ -1091,7 +1359,10 @@ func (c *NodeClient) Request(method, path string, data interface{}) ([]byte, err
 
 	var body io.Reader
 	if data != nil {
-		jsonData, _ := json.Marshal(data)
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return nil, fmt.Errorf("序列化请求数据失败: %v", err)
+		}
 		body = bytes.NewBuffer(jsonData)
 	}
 
@@ -1128,7 +1399,9 @@ func (c *NodeClient) GetStatus() (*NodeStatus, error) {
 		Obj     interface{} `json:"obj"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("解析状态响应失败: %v", err)
+	}
 
 	status := &NodeStatus{}
 	if obj, ok := result.Obj.(map[string]interface{}); ok {
@@ -1185,7 +1458,9 @@ func (c *NodeClient) GetInbounds() ([]map[string]interface{}, error) {
 		Obj     []map[string]interface{} `json:"obj"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("解析入站列表失败: %v", err)
+	}
 	if !result.Success {
 		return nil, fmt.Errorf("获取入站列表失败")
 	}
@@ -1205,7 +1480,9 @@ func (c *NodeClient) AddInbound(inbound map[string]interface{}) error {
 		Msg     string `json:"msg"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
 	if !result.Success {
 		return fmt.Errorf("添加入站失败: %s", result.Msg)
 	}
@@ -1225,7 +1502,9 @@ func (c *NodeClient) DeleteInbound(id int) error {
 		Msg     string `json:"msg"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
 	if !result.Success {
 		return fmt.Errorf("删除入站失败: %s", result.Msg)
 	}
@@ -1245,7 +1524,9 @@ func (c *NodeClient) RestartXray() error {
 		Msg     string `json:"msg"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %v", err)
+	}
 	if !result.Success {
 		return fmt.Errorf("重启失败: %s", result.Msg)
 	}
@@ -1284,14 +1565,18 @@ func (s *NodeService) ResetCredentials(nodeID uint, username, password string) e
 		return fmt.Errorf("设置密码失败: %v", err)
 	}
 
-	// 重启服务
-	s.SSHRun(sshClient, "ncp-agent restart")
+	// 重启服务使新凭证生效
+	if _, err := s.SSHRun(sshClient, "ncp-agent restart"); err != nil {
+		return fmt.Errorf("重启服务失败: %v", err)
+	}
 
 	// 更新数据库
-	model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Updates(map[string]interface{}{
+	if err := model.GetDB().Model(&model.Node{}).Where("id = ?", nodeID).Updates(map[string]interface{}{
 		"username": username,
 		"password": password,
-	})
+	}).Error; err != nil {
+		return fmt.Errorf("更新凭证到数据库失败: %v", err)
+	}
 
 	return nil
 }
@@ -1427,4 +1712,277 @@ fi
 	}
 
 	return output, nil
+}
+
+// ========== 中转规则管理 ==========
+
+// GetRelayRules 获取所有中转规则
+func (s *NodeService) GetRelayRules() ([]model.RelayRule, error) {
+	var rules []model.RelayRule
+	err := model.GetDB().Preload("RelayNode").Preload("BackendNode").Find(&rules).Error
+	return rules, err
+}
+
+// GetRelayRulesByBackendNode 获取指定落地节点的中转规则
+func (s *NodeService) GetRelayRulesByBackendNode(nodeID uint) ([]model.RelayRule, error) {
+	var rules []model.RelayRule
+	err := model.GetDB().Where("backend_node_id = ? AND enable = ?", nodeID, true).
+		Preload("RelayNode").Find(&rules).Error
+	return rules, err
+}
+
+// CreateRelayRule 创建中转规则
+func (s *NodeService) CreateRelayRule(rule *model.RelayRule) error {
+	return model.GetDB().Create(rule).Error
+}
+
+// DeleteRelayRule 删除中转规则（同时清理远端配置）
+func (s *NodeService) DeleteRelayRule(id uint) error {
+	var rule model.RelayRule
+	if err := model.GetDB().Preload("RelayNode").First(&rule, id).Error; err != nil {
+		return err
+	}
+
+	// 尝试从中转节点移除 outbound+routing
+	if rule.SyncStatus == "synced" && rule.RelayOutboundTag != "" {
+		node := rule.RelayNode
+		if node.APIToken != "" {
+			_ = s.agentAPI.RemoveRelayOutbound(node.IP, node.APIPort, node.APIToken,
+				rule.RelayOutboundTag, rule.RelayInboundTag)
+		}
+	}
+
+	return model.GetDB().Delete(&model.RelayRule{}, id).Error
+}
+
+// SyncRelayRule 同步中转规则到节点
+func (s *NodeService) SyncRelayRule(ruleID uint) error {
+	var rule model.RelayRule
+	if err := model.GetDB().Preload("RelayNode").Preload("BackendNode").First(&rule, ruleID).Error; err != nil {
+		return err
+	}
+
+	relayNode := rule.RelayNode
+	backendNode := rule.BackendNode
+
+	// 1. 获取落地节点的入站配置
+	client, err := s.getClient(backendNode.ID)
+	if err != nil {
+		s.updateRelayRuleStatus(ruleID, "error", fmt.Sprintf("连接落地节点失败: %v", err))
+		return err
+	}
+
+	inbounds, err := client.GetInbounds()
+	if err != nil {
+		s.updateRelayRuleStatus(ruleID, "error", fmt.Sprintf("获取落地节点入站失败: %v", err))
+		return err
+	}
+
+	// 查找匹配协议的入站
+	var targetInbound map[string]interface{}
+	for _, inbound := range inbounds {
+		protocol, _ := inbound["protocol"].(string)
+		if protocol == rule.Protocol {
+			targetInbound = inbound
+			break
+		}
+	}
+	if targetInbound == nil {
+		s.updateRelayRuleStatus(ruleID, "error", fmt.Sprintf("落地节点未找到 %s 协议入站", rule.Protocol))
+		return fmt.Errorf("落地节点未找到 %s 协议入站", rule.Protocol)
+	}
+
+	backendPort, _ := targetInbound["port"].(float64)
+	settings := getInboundField(targetInbound, "settings")
+	streamSettings := getInboundField(targetInbound, "streamSettings")
+
+	// 2. 生成唯一 tag
+	inboundTag := fmt.Sprintf("relay-in-%d", ruleID)
+	outboundTag := fmt.Sprintf("relay-out-%d", ruleID)
+
+	// 3. 确定中转入站端口
+	relayPort := rule.RelayInboundPort
+	if relayPort == 0 {
+		relayPort = 10000 + int(ruleID)
+	}
+
+	// 4. 构建中转 outbound（指向落地节点）
+	outbound := s.buildRelayOutbound(outboundTag, rule.Protocol, backendNode.IP, int(backendPort), settings, streamSettings)
+
+	// 5. 推送 outbound+routing 到中转节点
+	if relayNode.APIToken == "" {
+		s.updateRelayRuleStatus(ruleID, "error", "中转节点未配置 API Token")
+		return fmt.Errorf("中转节点未配置 API Token")
+	}
+
+	payload := map[string]interface{}{
+		"inboundTag": inboundTag,
+		"outbound":   outbound,
+	}
+	if err := s.agentAPI.AddRelayOutbound(relayNode.IP, relayNode.APIPort, relayNode.APIToken, payload); err != nil {
+		s.updateRelayRuleStatus(ruleID, "error", fmt.Sprintf("推送 outbound 失败: %v", err))
+		return err
+	}
+
+	// 6. 在中转节点创建入站（通过 3x-ui panel API）
+	relayClient, err := s.getClient(relayNode.ID)
+	if err != nil {
+		s.updateRelayRuleStatus(ruleID, "error", fmt.Sprintf("连接中转节点失败: %v", err))
+		return err
+	}
+
+	relayInbound := map[string]interface{}{
+		"remark":         fmt.Sprintf("relay-%s-%d", rule.Protocol, ruleID),
+		"enable":         true,
+		"port":           relayPort,
+		"protocol":       rule.Protocol,
+		"settings":       settings,
+		"streamSettings": streamSettings,
+		"tag":            inboundTag,
+	}
+	if err := relayClient.AddInbound(relayInbound); err != nil {
+		log.Printf("[Relay] 创建中转入站失败 (rule=%d): %v", ruleID, err)
+		// 入站创建失败不阻塞，outbound 已推送成功
+	}
+
+	// 7. 更新规则状态
+	model.GetDB().Model(&model.RelayRule{}).Where("id = ?", ruleID).Updates(map[string]interface{}{
+		"relay_inbound_port": relayPort,
+		"relay_inbound_tag":  inboundTag,
+		"relay_outbound_tag": outboundTag,
+		"sync_status":        "synced",
+		"sync_error":         "",
+	})
+
+	return nil
+}
+
+// updateRelayRuleStatus 更新规则同步状态
+func (s *NodeService) updateRelayRuleStatus(ruleID uint, status, syncError string) {
+	model.GetDB().Model(&model.RelayRule{}).Where("id = ?", ruleID).Updates(map[string]interface{}{
+		"sync_status": status,
+		"sync_error":  syncError,
+	})
+}
+
+// buildRelayOutbound 构建中转 outbound 配置
+func (s *NodeService) buildRelayOutbound(tag, protocol, backendIP string, backendPort int, settings, streamSettings string) map[string]interface{} {
+	outbound := map[string]interface{}{
+		"tag":      tag,
+		"protocol": protocol,
+	}
+
+	switch protocol {
+	case "vmess":
+		var settingsObj struct {
+			Clients []struct {
+				ID       string `json:"id"`
+				AlterId  int    `json:"alterId"`
+				Security string `json:"security"`
+			} `json:"clients"`
+		}
+		if err := json.Unmarshal([]byte(settings), &settingsObj); err != nil {
+			log.Printf("[Relay] 解析 vmess settings 失败: %v", err)
+			return outbound
+		}
+
+		users := make([]map[string]interface{}, 0)
+		for _, c := range settingsObj.Clients {
+			users = append(users, map[string]interface{}{
+				"id":       c.ID,
+				"alterId":  c.AlterId,
+				"security": "auto",
+			})
+		}
+		outbound["settings"] = map[string]interface{}{
+			"vnext": []map[string]interface{}{
+				{"address": backendIP, "port": backendPort, "users": users},
+			},
+		}
+
+	case "vless":
+		var settingsObj struct {
+			Clients []struct {
+				ID         string `json:"id"`
+				Flow       string `json:"flow"`
+				Encryption string `json:"encryption"`
+			} `json:"clients"`
+		}
+		if err := json.Unmarshal([]byte(settings), &settingsObj); err != nil {
+			log.Printf("[Relay] 解析 vless settings 失败: %v", err)
+			return outbound
+		}
+
+		users := make([]map[string]interface{}, 0)
+		for _, c := range settingsObj.Clients {
+			u := map[string]interface{}{
+				"id":         c.ID,
+				"encryption": "none",
+			}
+			if c.Flow != "" {
+				u["flow"] = c.Flow
+			}
+			users = append(users, u)
+		}
+		outbound["settings"] = map[string]interface{}{
+			"vnext": []map[string]interface{}{
+				{"address": backendIP, "port": backendPort, "users": users},
+			},
+		}
+
+	case "trojan":
+		var settingsObj struct {
+			Clients []struct {
+				Password string `json:"password"`
+			} `json:"clients"`
+		}
+		if err := json.Unmarshal([]byte(settings), &settingsObj); err != nil {
+			log.Printf("[Relay] 解析 trojan settings 失败: %v", err)
+			return outbound
+		}
+
+		servers := make([]map[string]interface{}, 0)
+		for _, c := range settingsObj.Clients {
+			servers = append(servers, map[string]interface{}{
+				"address":  backendIP,
+				"port":     backendPort,
+				"password": c.Password,
+			})
+		}
+		outbound["settings"] = map[string]interface{}{
+			"servers": servers,
+		}
+
+	case "shadowsocks":
+		var settingsObj struct {
+			Method   string `json:"method"`
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal([]byte(settings), &settingsObj); err != nil {
+			log.Printf("[Relay] 解析 shadowsocks settings 失败: %v", err)
+			return outbound
+		}
+
+		outbound["settings"] = map[string]interface{}{
+			"servers": []map[string]interface{}{
+				{
+					"address":  backendIP,
+					"port":     backendPort,
+					"method":   settingsObj.Method,
+					"password": settingsObj.Password,
+				},
+			},
+		}
+	}
+
+	// 添加 streamSettings
+	var stream map[string]interface{}
+	if err := json.Unmarshal([]byte(streamSettings), &stream); err != nil {
+		log.Printf("[Relay] 解析 streamSettings 失败: %v", err)
+	}
+	if stream != nil {
+		outbound["streamSettings"] = stream
+	}
+
+	return outbound
 }

@@ -51,6 +51,8 @@
           <div class="node-header">
             <div class="node-info">
               <span class="node-name">{{ node.name }}</span>
+              <a-tag v-if="node.type === 'relay'" color="orange" size="small">中转</a-tag>
+              <a-tag v-else-if="node.type === 'backend'" color="purple" size="small">落地</a-tag>
               <span class="node-ip">{{ node.ip }}:{{ node.port }}</span>
             </div>
             <span :class="['status-badge', node.status]">
@@ -95,15 +97,15 @@
             </div>
           </div>
           
-          <!-- Xray版本 -->
+          <!-- 内核版本 -->
           <div class="node-version" v-if="node.xrayVersion">
-            <TagOutlined /> Xray {{ node.xrayVersion }}
+            <TagOutlined /> 内核 {{ node.xrayVersion }}
           </div>
 
-          <!-- AgentKey 和面板访问 -->
+          <!-- 节点密钥和面板访问 -->
           <div class="node-key-panel" v-if="node.agentKey">
             <div class="key-info">
-              <span class="key-label">AgentKey:</span>
+              <span class="key-label">节点密钥:</span>
               <code class="key-value">{{ node.agentKey }}</code>
               <button class="copy-key-btn" @click="copyAgentKey(node.agentKey)">
                 <CopyOutlined />
@@ -130,12 +132,12 @@
                 <SyncOutlined :class="{ 'spin': node.syncing }" />
               </button>
             </a-tooltip>
-            <a-tooltip title="SSH安装">
+            <a-tooltip title="远程安装">
               <button class="action-btn primary" @click="doInstallNode(node)" :disabled="node.installing">
                 <CloudUploadOutlined :class="{ 'spin': node.installing }" />
               </button>
             </a-tooltip>
-            <a-tooltip title="重启Xray">
+            <a-tooltip title="重启服务">
               <button class="action-btn" @click="restartXray(node)">
                 <ReloadOutlined />
               </button>
@@ -198,6 +200,13 @@
             </a-form-item>
           </a-col>
         </a-row>
+        <a-form-item label="节点类型">
+          <a-select v-model:value="form.type" style="width: 100%">
+            <a-select-option value="standalone">独立节点</a-select-option>
+            <a-select-option value="relay">中转节点</a-select-option>
+            <a-select-option value="backend">落地节点</a-select-option>
+          </a-select>
+        </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="面板端口">
@@ -215,34 +224,34 @@
         </a-form-item>
         <a-row :gutter="16" v-if="editingNode">
           <a-col :span="16">
-            <a-form-item label="API Token">
+            <a-form-item label="面板令牌">
               <a-input-group compact>
                 <a-input v-model:value="form.apiToken" style="width: calc(100% - 60px)" readonly />
-                <a-button @click="copyToClipboard(form.apiToken, 'API Token')"><CopyOutlined /></a-button>
+                <a-button @click="copyToClipboard(form.apiToken, '面板令牌')"><CopyOutlined /></a-button>
               </a-input-group>
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item label="API端口">
+            <a-form-item label="面板端口">
               <a-input-number v-model:value="form.apiPort" :min="1" :max="65535" style="width: 100%" />
             </a-form-item>
           </a-col>
         </a-row>
-        <a-divider>SSH 配置（SSH安装需要）</a-divider>
+        <a-divider>远程连接配置（节点安装需要）</a-divider>
         <a-row :gutter="16">
           <a-col :span="8">
-            <a-form-item label="SSH端口">
+            <a-form-item label="远程端口">
               <a-input-number v-model:value="form.sshPort" :min="1" :max="65535" style="width: 100%" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item label="SSH用户">
-              <a-input v-model:value="form.sshUser" placeholder="root" />
+            <a-form-item label="远程用户">
+              <a-input v-model:value="form.sshUser" placeholder="默认 root" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item label="SSH密码">
-              <a-input-password v-model:value="form.sshPassword" placeholder="SSH密码" />
+            <a-form-item label="远程密码">
+              <a-input-password v-model:value="form.sshPassword" placeholder="远程密码" />
             </a-form-item>
           </a-col>
         </a-row>
@@ -272,7 +281,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onDeactivated, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { h } from 'vue'
 import {
@@ -294,7 +303,7 @@ let refreshTimer = null
 
 const form = ref({
   name: '', ip: '', port: 54321, username: '', password: '',
-  sshPort: 22, sshUser: 'root', sshPassword: '', remark: ''
+  sshPort: 22, sshUser: 'root', sshPassword: '', type: 'standalone', remark: ''
 })
 
 // 统计数据
@@ -426,6 +435,8 @@ const restartXray = async (node) => {
   }
 }
 
+onDeactivated(() => { modalVisible.value = false; resetPasswordVisible.value = false })
+
 // 重置密码弹窗
 const resetPasswordVisible = ref(false)
 const resetPasswordNode = ref(null)
@@ -486,7 +497,7 @@ const doUpdateAgent = async (node) => {
 
 const showAddModal = () => {
   editingNode.value = null
-  form.value = { name: '', ip: '', port: 54321, username: '', password: '', sshPort: 22, sshUser: 'root', sshPassword: '', remark: '' }
+  form.value = { name: '', ip: '', port: 54321, username: '', password: '', sshPort: 22, sshUser: 'root', sshPassword: '', type: 'standalone', remark: '' }
   modalVisible.value = true
 }
 
@@ -538,7 +549,7 @@ const copyPanelLink = (node) => {
 // 复制AgentKey
 const copyAgentKey = (agentKey) => {
   navigator.clipboard.writeText(agentKey).then(() => {
-    message.success('AgentKey已复制')
+    message.success('节点密钥已复制')
   }).catch(() => {
     message.error('复制失败')
   })
@@ -602,12 +613,12 @@ onUnmounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
-.title-icon { color: #1677ff; font-size: 24px; }
-.page-desc { color: #8c8c8c; font-size: 14px; margin-top: 4px; }
+.title-icon { color: #3b82f6; font-size: 24px; }
+.page-desc { color: #64748b; font-size: 14px; margin-top: 4px; }
 .header-actions { display: flex; gap: 12px; }
 
 /* 统计卡片 */
@@ -627,11 +638,11 @@ onUnmounted(() => {
 }
 
 .stat-value { font-size: 28px; font-weight: 700; }
-.stat-label { font-size: 13px; color: #8c8c8c; margin-top: 4px; }
-.stat-card.total .stat-value { color: #1677ff; }
-.stat-card.online .stat-value { color: #52c41a; }
-.stat-card.offline .stat-value { color: #ff4d4f; }
-.stat-card.traffic .stat-value { color: #722ed1; }
+.stat-label { font-size: 13px; color: #64748b; margin-top: 4px; }
+.stat-card.total .stat-value { color: #3b82f6; }
+.stat-card.online .stat-value { color: #16a34a; }
+.stat-card.offline .stat-value { color: #dc2626; }
+.stat-card.traffic .stat-value { color: #7c3aed; }
 
 @media (max-width: 992px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -660,8 +671,8 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.node-card.online { border-color: #b7eb8f; }
-.node-card.offline { border-color: #ffccc7; opacity: 0.8; }
+.node-card.online { border-color: #86efac; }
+.node-card.offline { border-color: #fecaca; opacity: 0.8; }
 
 .node-header {
   display: flex;
@@ -671,8 +682,8 @@ onUnmounted(() => {
 }
 
 .node-info { display: flex; flex-direction: column; gap: 2px; }
-.node-name { font-size: 16px; font-weight: 600; color: #262626; }
-.node-ip { font-size: 12px; color: #8c8c8c; }
+.node-name { font-size: 16px; font-weight: 600; color: #1e293b; }
+.node-ip { font-size: 12px; color: #64748b; }
 
 .status-badge {
   display: inline-flex;
@@ -685,12 +696,12 @@ onUnmounted(() => {
 }
 
 .status-dot { width: 6px; height: 6px; border-radius: 50%; }
-.status-badge.online { background: #f6ffed; color: #52c41a; }
-.status-badge.online .status-dot { background: #52c41a; }
-.status-badge.offline { background: #fff2f0; color: #ff4d4f; }
-.status-badge.offline .status-dot { background: #ff4d4f; }
-.status-badge.unknown { background: #f5f5f5; color: #8c8c8c; }
-.status-badge.unknown .status-dot { background: #8c8c8c; }
+.status-badge.online { background: #f0fdf4; color: #16a34a; }
+.status-badge.online .status-dot { background: #16a34a; }
+.status-badge.offline { background: #fef2f2; color: #dc2626; }
+.status-badge.offline .status-dot { background: #dc2626; }
+.status-badge.unknown { background: #f1f5f9; color: #64748b; }
+.status-badge.unknown .status-dot { background: #64748b; }
 
 /* 延迟显示 */
 .node-latency {
@@ -702,9 +713,9 @@ onUnmounted(() => {
 }
 
 .latency-value { font-weight: 600; }
-.latency-value.fast { color: #52c41a; }
-.latency-value.medium { color: #fa8c16; }
-.latency-value.slow { color: #ff4d4f; }
+.latency-value.fast { color: #16a34a; }
+.latency-value.medium { color: #f59e0b; }
+.latency-value.slow { color: #dc2626; }
 
 /* 资源使用 */
 .node-resources {
@@ -723,7 +734,7 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.resource-label { font-size: 12px; color: #8c8c8c; width: 28px; }
+.resource-label { font-size: 12px; color: #64748b; width: 28px; }
 .resource-bar {
   flex: 1;
   height: 6px;
@@ -736,14 +747,14 @@ onUnmounted(() => {
   height: 100%;
   border-radius: 3px;
   transition: width 0.3s;
-  background: linear-gradient(90deg, #1677ff, #4096ff);
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
 }
 
-.resource-fill.memory { background: linear-gradient(90deg, #13c2c2, #36cfc9); }
-.resource-fill.danger { background: linear-gradient(90deg, #ff4d4f, #ff7875); }
-.resource-fill.warning { background: linear-gradient(90deg, #fa8c16, #ffc53d); }
+.resource-fill.memory { background: linear-gradient(90deg, #0891b2, #36cfc9); }
+.resource-fill.danger { background: linear-gradient(90deg, #dc2626, #ff7875); }
+.resource-fill.warning { background: linear-gradient(90deg, #f59e0b, #ffc53d); }
 
-.resource-value { font-size: 12px; color: #595959; width: 50px; text-align: right; }
+.resource-value { font-size: 12px; color: #475569; width: 50px; text-align: right; }
 
 /* 流量统计 */
 .node-traffic {
@@ -757,16 +768,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 13px;
-  color: #595959;
+  color: #475569;
 }
 
-.traffic-item:first-child { color: #1677ff; }
-.traffic-item:last-child { color: #13c2c2; }
+.traffic-item:first-child { color: #3b82f6; }
+.traffic-item:last-child { color: #0891b2; }
 
 /* 版本信息 */
 .node-version {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 12px;
 }
 
@@ -792,7 +803,7 @@ onUnmounted(() => {
 
 .key-label, .panel-label {
   font-size: 12px;
-  color: #1677ff;
+  color: #3b82f6;
   font-weight: 500;
   width: 70px;
   flex-shrink: 0;
@@ -801,7 +812,7 @@ onUnmounted(() => {
 .key-value, .panel-value {
   flex: 1;
   font-size: 11px;
-  color: #595959;
+  color: #475569;
   background: transparent;
   padding: 0;
   word-break: break-all;
@@ -814,7 +825,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1677ff;
+  background: #3b82f6;
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -824,7 +835,7 @@ onUnmounted(() => {
 }
 
 .copy-key-btn:hover {
-  background: #0958d9;
+  background: #2563eb;
 }
 
 /* 操作按钮 */
@@ -840,24 +851,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  color: #595959;
+  color: #475569;
   transition: all 0.15s;
 }
 
-.action-btn:hover { background: #e6f4ff; color: #1677ff; }
-.action-btn.primary { background: #1677ff; color: white; }
-.action-btn.primary:hover { background: #0958d9; }
-.action-btn.danger:hover { background: #fff2f0; color: #ff4d4f; }
+.action-btn:hover { background: #eff6ff; color: #3b82f6; }
+.action-btn.primary { background: #3b82f6; color: white; }
+.action-btn.primary:hover { background: #2563eb; }
+.action-btn.danger:hover { background: #fef2f2; color: #dc2626; }
 .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 同步时间 */
 .node-sync-time {
   font-size: 11px;
-  color: #bfbfbf;
+  color: #94a3b8;
   margin-top: 12px;
   text-align: right;
 }
@@ -868,8 +879,8 @@ onUnmounted(() => {
   padding: 48px;
 }
 
-.empty-icon { font-size: 48px; color: #d9d9d9; margin-bottom: 16px; }
-.empty-state p { color: #8c8c8c; margin-bottom: 16px; }
+.empty-icon { font-size: 48px; color: #cbd5e1; margin-bottom: 16px; }
+.empty-state p { color: #64748b; margin-bottom: 16px; }
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

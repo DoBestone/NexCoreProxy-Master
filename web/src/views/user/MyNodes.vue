@@ -61,18 +61,10 @@
               <span class="value protocol">{{ node.protocol?.toUpperCase() }}</span>
             </div>
             <div class="detail-row">
-              <span class="label">端口</span>
-              <span class="value">{{ node.port }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">流量</span>
-              <span class="value">{{ formatTraffic(node.up + node.down) }} / {{ formatTraffic(node.total) || '无限' }}</span>
+              <span class="label">地址</span>
+              <span class="value">{{ node.ip }}</span>
             </div>
           </div>
-          
-          <button class="copy-link-btn" @click="copyLink(node)">
-            <CopyOutlined /> 复制链接
-          </button>
         </div>
       </div>
     </div>
@@ -89,23 +81,6 @@ const nodes = ref([])
 const subscribeUrl = ref('')
 const loading = ref(false)
 const refreshing = ref(false)
-
-const formatTraffic = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const copyLink = (node) => {
-  if (node.link) {
-    navigator.clipboard.writeText(node.link)
-    message.success('链接已复制')
-  } else {
-    message.warning('暂无可用链接')
-  }
-}
 
 const copySubscribe = () => {
   if (subscribeUrl.value) {
@@ -154,7 +129,7 @@ onMounted(() => {
 
 /* 订阅卡片 */
 .subscribe-card {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
@@ -239,12 +214,12 @@ onMounted(() => {
 
 .subscribe-actions .ant-btn-primary {
   background: white;
-  color: #1677ff;
+  color: #3b82f6;
   font-weight: 600;
 }
 
 .subscribe-actions .ant-btn-primary:hover {
-  background: #f0f9ff;
+  background: #eff6ff;
 }
 
 .subscribe-actions .ant-btn:not(.ant-btn-primary) {
@@ -270,13 +245,13 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
 }
 
 .node-count {
   font-size: 13px;
-  color: #8c8c8c;
-  background: #f5f5f5;
+  color: #64748b;
+  background: #f1f5f9;
   padding: 4px 12px;
   border-radius: 20px;
 }
@@ -289,12 +264,12 @@ onMounted(() => {
 
 .empty-icon {
   font-size: 48px;
-  color: #d9d9d9;
+  color: #cbd5e1;
   margin-bottom: 16px;
 }
 
 .empty-state p {
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 20px;
 }
 
@@ -309,13 +284,13 @@ onMounted(() => {
   background: #f8fafc;
   border-radius: 12px;
   padding: 20px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e2e8f0;
   transition: all 0.2s ease;
 }
 
 .node-card:hover {
-  border-color: #1677ff;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.1);
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
 }
 
 .node-header {
@@ -328,7 +303,7 @@ onMounted(() => {
 .node-name {
   font-size: 16px;
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
 }
 
 .status-badge {
@@ -339,13 +314,13 @@ onMounted(() => {
 }
 
 .status-badge.online {
-  background: #f6ffed;
-  color: #52c41a;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .status-badge.offline {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .node-details {
@@ -362,37 +337,16 @@ onMounted(() => {
 }
 
 .detail-row .label {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .detail-row .value {
-  color: #262626;
+  color: #1e293b;
   font-weight: 500;
 }
 
 .detail-row .value.protocol {
-  color: #1677ff;
-}
-
-.copy-link-btn {
-  width: 100%;
-  padding: 10px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.15s ease;
-}
-
-.copy-link-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+  color: #3b82f6;
 }
 
 /* 响应式 */

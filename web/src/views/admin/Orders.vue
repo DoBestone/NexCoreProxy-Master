@@ -35,7 +35,7 @@
           <template v-if="column.key === 'package'">
             <div class="package-cell">
               <span class="package-name">{{ record.packageName }}</span>
-              <span class="package-duration">{{ record.duration }}天</span>
+              <span class="package-duration">{{ record.duration ? record.duration + '天' : '永久' }}</span>
             </div>
           </template>
           <template v-if="column.key === 'amount'">
@@ -152,17 +152,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -174,7 +174,7 @@ onMounted(() => {
 .order-no {
   font-family: 'SF Mono', Monaco, monospace;
   font-size: 13px;
-  color: #595959;
+  color: #475569;
 }
 
 .user-cell {
@@ -184,7 +184,7 @@ onMounted(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
 }
 
 .package-cell {
@@ -194,22 +194,22 @@ onMounted(() => {
 
 .package-name {
   font-weight: 500;
-  color: #262626;
+  color: #1e293b;
 }
 
 .package-duration {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .amount {
   font-weight: 600;
-  color: #ff4d4f;
+  color: #dc2626;
 }
 
 .time-text {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 状态徽章 */
@@ -222,27 +222,27 @@ onMounted(() => {
 }
 
 .status-badge.pending {
-  background: #fff7e6;
-  color: #d46b08;
+  background: #fffbeb;
+  color: #b45309;
 }
 
 .status-badge.paid {
-  background: #f6ffed;
-  color: #52c41a;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .status-badge.cancelled {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .status-badge.refunded {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .text-muted {
-  color: #bfbfbf;
+  color: #94a3b8;
 }
 
 .action-btns {

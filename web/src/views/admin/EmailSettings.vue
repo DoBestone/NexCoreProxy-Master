@@ -12,11 +12,11 @@
     <!-- 配置卡片 -->
     <a-card class="config-card">
       <a-form :model="form" layout="vertical" class="email-form">
-        <a-form-item label="API 地址" required>
+        <a-form-item label="接口地址" required>
           <a-input v-model:value="form.apiUrl" placeholder="https://smtp-lite.nexcores.net" />
         </a-form-item>
 
-        <a-form-item label="API Key" required>
+        <a-form-item label="接口密钥" required>
           <a-input-password v-model:value="form.apiKey" placeholder="smtp_xxxxxxxxxxxx" />
         </a-form-item>
 
@@ -47,13 +47,13 @@
         <InfoCircleOutlined /> 配置说明
       </template>
       <div class="help-content">
-        <h4>SMTP Lite API</h4>
+        <h4>邮件发送接口</h4>
         <p>系统使用 SMTP Lite API 统一发送邮件，自动轮询可用 SMTP 账号，无需自行配置 SMTP 服务器。</p>
 
         <h4 style="margin-top: 16px;">配置步骤</h4>
-        <ol style="color: #595959; line-height: 2;">
-          <li>填写 API 地址（默认：https://smtp-lite.nexcores.net）</li>
-          <li>填写 API Key（在 SMTP Lite 管理后台创建）</li>
+        <ol style="color: #475569; line-height: 2;">
+          <li>填写接口地址（默认：https://smtp-lite.nexcores.net）</li>
+          <li>填写接口密钥（在 SMTP Lite 管理后台创建）</li>
           <li>设置发件人显示名称</li>
           <li>勾选"启用邮件服务"</li>
           <li>点击"发送测试邮件"验证配置</li>
@@ -65,7 +65,7 @@
           style="margin-top: 16px"
         >
           <template #message>
-            API Key 仅在创建时完整展示一次，请妥善保存。
+            接口密钥仅在创建时完整展示一次，请妥善保存。
           </template>
         </a-alert>
       </div>
@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { MailOutlined, SaveOutlined, SendOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import { getEmailConfig, updateEmailConfig, testEmail as sendTestEmailApi } from '@/api'
@@ -96,6 +96,8 @@ import { getEmailConfig, updateEmailConfig, testEmail as sendTestEmailApi } from
 const saving = ref(false)
 const testing = ref(false)
 const testVisible = ref(false)
+
+onDeactivated(() => { testVisible.value = false })
 const testEmailAddress = ref('')
 
 const form = ref({
@@ -118,7 +120,7 @@ const fetchConfig = async () => {
 
 const saveConfig = async () => {
   if (!form.value.apiUrl) {
-    message.warning('请填写 API 地址')
+    message.warning('请填写接口地址')
     return
   }
 
@@ -177,17 +179,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -202,12 +204,12 @@ onMounted(() => {
 }
 
 .help-content h4 {
-  color: #262626;
+  color: #1e293b;
   margin-bottom: 8px;
 }
 
 .help-content p {
-  color: #595959;
+  color: #475569;
   font-size: 14px;
   line-height: 1.6;
 }

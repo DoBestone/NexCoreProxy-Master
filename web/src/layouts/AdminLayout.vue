@@ -38,6 +38,10 @@
             <template #icon><CloudServerOutlined /></template>
             <span>服务器管理</span>
           </a-menu-item>
+          <a-menu-item key="relay-rules" @click="$router.push('/admin/relay-rules')">
+            <template #icon><SwapOutlined /></template>
+            <span>中转规则</span>
+          </a-menu-item>
           <a-menu-item key="users" @click="$router.push('/admin/users')">
             <template #icon><TeamOutlined /></template>
             <span>用户管理</span>
@@ -128,7 +132,11 @@
       <!-- 内容区域 -->
       <a-layout-content class="content">
         <div class="content-wrapper">
-          <router-view />
+          <router-view v-slot="{ Component }">
+            <keep-alive :max="10">
+              <component :is="Component" :key="$route.path" />
+            </keep-alive>
+          </router-view>
         </div>
       </a-layout-content>
     </a-layout>
@@ -165,6 +173,10 @@
         <a-menu-item key="nodes" @click="navigateTo('/admin/nodes')">
           <template #icon><CloudServerOutlined /></template>
           <span>服务器管理</span>
+        </a-menu-item>
+        <a-menu-item key="relay-rules" @click="navigateTo('/admin/relay-rules')">
+          <template #icon><SwapOutlined /></template>
+          <span>中转规则</span>
         </a-menu-item>
         <a-menu-item key="users" @click="navigateTo('/admin/users')">
           <template #icon><TeamOutlined /></template>
@@ -227,7 +239,8 @@ import {
   SafetyOutlined,
   NotificationOutlined,
   MailOutlined,
-  CloudSyncOutlined
+  CloudSyncOutlined,
+  SwapOutlined
 } from '@ant-design/icons-vue'
 import { logout } from '@/api'
 
@@ -284,7 +297,7 @@ const handleLogout = async () => {
 <style scoped>
 .admin-layout {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: #f8fafc;
 }
 
 /* 侧边栏 */
@@ -309,7 +322,7 @@ const handleLogout = async () => {
   align-items: center;
   padding: 0 20px;
   margin: 0;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
 }
@@ -381,15 +394,15 @@ const handleLogout = async () => {
 }
 
 .nav-menu :deep(.ant-menu-item:hover) {
-  color: #1677ff;
+  color: #3b82f6;
   background: #f0f7ff;
 }
 
 .nav-menu :deep(.ant-menu-item-selected) {
-  color: #1677ff;
-  background: #e6f4ff !important;
+  color: #3b82f6;
+  background: #eff6ff !important;
   font-weight: 600;
-  border-left: 3px solid #1677ff;
+  border-left: 3px solid #3b82f6;
 }
 
 .nav-menu :deep(.ant-menu-item .anticon) {
@@ -399,7 +412,7 @@ const handleLogout = async () => {
 /* 侧边栏底部 */
 .sider-footer {
   padding: 12px 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
   flex-shrink: 0;
 }
 
@@ -409,7 +422,7 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: #f8fafc;
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -419,13 +432,13 @@ const handleLogout = async () => {
 }
 
 .sider-footer .collapse-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 /* 主布局 */
 .main-layout {
-  background: #f5f7fa;
+  background: #f8fafc;
   margin-left: 240px;
   transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -462,7 +475,7 @@ const handleLogout = async () => {
   height: 40px;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: #f8fafc;
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -472,8 +485,8 @@ const handleLogout = async () => {
 }
 
 .mobile-menu-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .page-title {
@@ -508,11 +521,11 @@ const handleLogout = async () => {
 }
 
 .user-info:hover {
-  background: #f5f7fa;
+  background: #f8fafc;
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
 }
 
 .user-name {
@@ -529,13 +542,13 @@ const handleLogout = async () => {
 .content-wrapper {
   padding: 24px;
   padding-bottom: 80px;
-  max-width: 1600px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 /* 移动端抽屉 */
 .mobile-drawer :deep(.ant-drawer-header) {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #e2e8f0;
   padding: 16px 24px;
 }
 
@@ -545,13 +558,13 @@ const handleLogout = async () => {
   gap: 12px;
   font-size: 18px;
   font-weight: 700;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .drawer-logo .logo-icon {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 8px;
   color: white;
 }

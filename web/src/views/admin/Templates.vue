@@ -107,8 +107,8 @@
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="TLS 配置">
-              <a-textarea v-model:value="form.tls" :rows="4" placeholder="TLS 配置 JSON（可选）" class="code-textarea" />
+            <a-form-item label="安全传输配置">
+              <a-textarea v-model:value="form.tls" :rows="4" placeholder="安全传输配置 JSON（可选）" class="code-textarea" />
             </a-form-item>
           </a-col>
         </a-row>
@@ -151,7 +151,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, FileTextOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { getTemplates, addTemplate, deleteTemplate, getNodes, addNodeInbound } from '@/api'
@@ -161,6 +161,8 @@ const templates = ref([])
 const nodes = ref([])
 const modalVisible = ref(false)
 const applyVisible = ref(false)
+
+onDeactivated(() => { modalVisible.value = false; applyVisible.value = false })
 const editingTemplate = ref(null)
 const currentTemplate = ref(null)
 const selectedNodeId = ref(null)
@@ -176,6 +178,11 @@ const form = ref({
   tls: '',
   remark: ''
 })
+
+const safeJsonParse = (str) => {
+  try { return JSON.parse(str || '{}') }
+  catch { return {} }
+}
 
 const fetchData = async () => {
   loading.value = true
@@ -216,6 +223,10 @@ const editTemplate = (template) => {
 const handleSubmit = async () => {
   submitting.value = true
   try {
+    // 编辑模式：先删旧的再创建新的
+    if (editingTemplate.value?.id) {
+      await deleteTemplate(editingTemplate.value.id)
+    }
     await addTemplate(form.value)
     message.success('保存成功')
     modalVisible.value = false
@@ -254,8 +265,8 @@ const handleApply = async () => {
       remark: currentTemplate.value.name,
       protocol: currentTemplate.value.protocol,
       port: currentTemplate.value.port,
-      settings: JSON.parse(currentTemplate.value.settings || '{}'),
-      streamSettings: JSON.parse(currentTemplate.value.stream || '{}')
+      settings: safeJsonParse(currentTemplate.value.settings),
+      streamSettings: safeJsonParse(currentTemplate.value.stream)
     }
     await addNodeInbound(selectedNodeId.value, inbound)
     message.success('应用成功')
@@ -291,17 +302,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -342,27 +353,27 @@ onMounted(() => {
   font-weight: 700;
 }
 
-.protocol-badge.vmess { background: #e6f4ff; color: #1677ff; }
-.protocol-badge.vless { background: #f6ffed; color: #52c41a; }
-.protocol-badge.trojan { background: #fff7e6; color: #d46b08; }
+.protocol-badge.vmess { background: #eff6ff; color: #3b82f6; }
+.protocol-badge.vless { background: #f0fdf4; color: #16a34a; }
+.protocol-badge.trojan { background: #fffbeb; color: #b45309; }
 .protocol-badge.shadowsocks { background: #e6fffb; color: #08979c; }
 
 .template-port {
   font-size: 14px;
-  color: #8c8c8c;
+  color: #64748b;
   font-family: 'SF Mono', Monaco, monospace;
 }
 
 .template-name {
   font-size: 16px;
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
   margin-bottom: 8px;
 }
 
 .template-remark {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 16px;
 }
 
@@ -371,7 +382,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
 }
 
 .action-btns {
@@ -385,22 +396,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  color: #595959;
+  color: #475569;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .action-btn.danger:hover {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* 空状态卡片 */
@@ -413,20 +424,20 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  border: 2px dashed #d9d9d9;
+  border: 2px dashed #cbd5e1;
   cursor: pointer;
   transition: all 0.2s ease;
   min-height: 200px;
 }
 
 .empty-card:hover {
-  border-color: #1677ff;
-  background: #f0f9ff;
+  border-color: #3b82f6;
+  background: #eff6ff;
 }
 
 .empty-card .add-icon {
   font-size: 32px;
-  color: #bfbfbf;
+  color: #94a3b8;
 }
 
 /* 加载状态 */
@@ -459,7 +470,7 @@ onMounted(() => {
 }
 
 .info-row .label {
-  color: #8c8c8c;
+  color: #64748b;
   width: 50px;
 }
 

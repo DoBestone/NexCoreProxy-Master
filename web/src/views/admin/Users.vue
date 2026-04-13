@@ -48,7 +48,7 @@
             <div class="traffic-cell">
               <span class="used">{{ formatTraffic(record.trafficUsed) }}</span>
               <span class="divider">/</span>
-              <span class="limit">{{ formatTraffic(record.trafficLimit) || '无限' }}</span>
+              <span class="limit">{{ formatTraffic(record.trafficLimit, true) }}</span>
             </div>
           </template>
           <template v-if="column.key === 'expireAt'">
@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, TeamOutlined, EditOutlined, DeleteOutlined, DollarOutlined } from '@ant-design/icons-vue'
 import { getUsers, addUser, updateUser, deleteUser } from '@/api'
@@ -185,6 +185,8 @@ const loading = ref(false)
 const users = ref([])
 const modalVisible = ref(false)
 const rechargeVisible = ref(false)
+
+onDeactivated(() => { modalVisible.value = false; rechargeVisible.value = false })
 const editingUser = ref(null)
 const submitting = ref(false)
 const recharging = ref(false)
@@ -212,8 +214,8 @@ const columns = [
   { title: '操作', key: 'action', width: 130, fixed: 'right' }
 ]
 
-const formatTraffic = (bytes) => {
-  if (!bytes) return '0 B'
+const formatTraffic = (bytes, isLimit = false) => {
+  if (!bytes || bytes === 0) return isLimit ? '无限' : '0 B'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -337,17 +339,17 @@ onMounted(() => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
 .page-desc {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 14px;
   margin-top: 4px;
 }
@@ -364,7 +366,7 @@ onMounted(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   flex-shrink: 0;
 }
 
@@ -375,12 +377,12 @@ onMounted(() => {
 
 .user-name {
   font-weight: 600;
-  color: #262626;
+  color: #1e293b;
 }
 
 .user-email {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 角色徽章 */
@@ -393,19 +395,19 @@ onMounted(() => {
 }
 
 .role-badge.admin {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .role-badge.user {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 /* 余额 */
 .balance {
   font-weight: 600;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 /* 流量 */
@@ -416,16 +418,16 @@ onMounted(() => {
 }
 
 .traffic-cell .used {
-  color: #1677ff;
+  color: #3b82f6;
   font-weight: 500;
 }
 
 .traffic-cell .divider {
-  color: #d9d9d9;
+  color: #cbd5e1;
 }
 
 .traffic-cell .limit {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 到期时间 */
@@ -434,7 +436,7 @@ onMounted(() => {
 }
 
 .expire-date.expired {
-  color: #ff4d4f;
+  color: #dc2626;
 }
 
 /* 操作按钮 */
@@ -449,22 +451,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  color: #595959;
+  color: #475569;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .action-btn.danger:hover {
-  background: #fff2f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* 充值弹窗 */
@@ -481,7 +483,7 @@ onMounted(() => {
 }
 
 .recharge-row .label {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .recharge-row .value {
@@ -490,7 +492,7 @@ onMounted(() => {
 
 .recharge-row .value.balance {
   font-size: 18px;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 /* 响应式 */

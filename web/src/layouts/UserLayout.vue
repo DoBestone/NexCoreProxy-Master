@@ -82,7 +82,11 @@
     <!-- 内容区域 -->
     <a-layout-content class="content">
       <div class="content-wrapper">
-        <router-view />
+        <router-view v-slot="{ Component }">
+            <keep-alive :max="10">
+              <component :is="Component" :key="$route.path" />
+            </keep-alive>
+          </router-view>
       </div>
     </a-layout-content>
     
@@ -198,7 +202,7 @@ const handleLogout = async () => {
 <style scoped>
 .user-layout {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f8fafc 0%, #f0f9ff 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #eff6ff 100%);
   display: flex;
   flex-direction: column;
 }
@@ -219,7 +223,7 @@ const handleLogout = async () => {
 }
 
 .header-inner {
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
   height: 64px;
@@ -248,10 +252,10 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 12px;
   color: white;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.25);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
 .logo-icon svg {
@@ -262,7 +266,7 @@ const handleLogout = async () => {
 .logo-text {
   font-size: 18px;
   font-weight: 700;
-  color: #1677ff;
+  color: #3b82f6;
   letter-spacing: -0.5px;
 }
 
@@ -281,13 +285,13 @@ const handleLogout = async () => {
 }
 
 .nav-menu :deep(.ant-menu-item:hover) {
-  color: #1677ff;
+  color: #3b82f6;
   background: #f0f7ff;
 }
 
 .nav-menu :deep(.ant-menu-item-selected) {
-  color: #1677ff !important;
-  background: linear-gradient(135deg, #e6f4ff 0%, #d6e8ff 100%) !important;
+  color: #3b82f6 !important;
+  background: linear-gradient(135deg, #eff6ff 0%, #d6e8ff 100%) !important;
   border-bottom: none !important;
 }
 
@@ -323,16 +327,16 @@ const handleLogout = async () => {
 }
 
 .user-info:hover {
-  background: #f5f7fa;
+  background: #f8fafc;
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #13c2c2 0%, #36cfc9 100%);
+  background: linear-gradient(135deg, #0891b2 0%, #22d3ee 100%);
 }
 
 .user-name {
   font-weight: 500;
-  color: #262626;
+  color: #1e293b;
 }
 
 /* 移动端菜单按钮 */
@@ -342,7 +346,7 @@ const handleLogout = async () => {
   display: none;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: #f8fafc;
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -352,8 +356,8 @@ const handleLogout = async () => {
 }
 
 .mobile-menu-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 /* 内容区域 */
@@ -363,7 +367,7 @@ const handleLogout = async () => {
 }
 
 .content-wrapper {
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
   padding-bottom: 80px;
@@ -376,12 +380,12 @@ const handleLogout = async () => {
   backdrop-filter: blur(8px);
   text-align: center;
   padding: 20px 24px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
   flex-shrink: 0;
 }
 
 .footer p {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 13px;
   margin: 0;
 }
@@ -394,12 +398,12 @@ const handleLogout = async () => {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border: none;
   color: white;
   font-size: 22px;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(22, 119, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
   display: none;
   align-items: center;
   justify-content: center;
@@ -409,12 +413,12 @@ const handleLogout = async () => {
 
 .mobile-fab:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(22, 119, 255, 0.4);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
 }
 
 /* 移动端抽屉 */
 .mobile-drawer :deep(.ant-drawer-header) {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #e2e8f0;
   padding: 16px 24px;
 }
 
@@ -424,13 +428,13 @@ const handleLogout = async () => {
   gap: 12px;
   font-size: 18px;
   font-weight: 700;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .drawer-logo .logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 10px;
   color: white;
   display: flex;

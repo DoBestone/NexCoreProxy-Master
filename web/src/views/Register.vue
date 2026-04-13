@@ -195,14 +195,14 @@ onUnmounted(() => {
   justify-content: center;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #f8fafc 0%, #e6f4ff 50%, #f0f9ff 100%);
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 50%, #eff6ff 100%);
 }
 
 .bg-decoration { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .bg-circle { position: absolute; border-radius: 50%; opacity: 0.4; }
-.bg-circle-1 { width: 600px; height: 600px; background: linear-gradient(135deg, rgba(22, 119, 255, 0.08) 0%, rgba(19, 194, 194, 0.05) 100%); top: -200px; right: -100px; }
-.bg-circle-2 { width: 400px; height: 400px; background: linear-gradient(135deg, rgba(19, 194, 194, 0.08) 0%, rgba(22, 119, 255, 0.05) 100%); bottom: -100px; left: -100px; }
-.bg-circle-3 { width: 300px; height: 300px; background: rgba(22, 119, 255, 0.03); top: 50%; left: 10%; transform: translateY(-50%); }
+.bg-circle-1 { width: 600px; height: 600px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(19, 194, 194, 0.05) 100%); top: -200px; right: -100px; }
+.bg-circle-2 { width: 400px; height: 400px; background: linear-gradient(135deg, rgba(19, 194, 194, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%); bottom: -100px; left: -100px; }
+.bg-circle-3 { width: 300px; height: 300px; background: rgba(59, 130, 246, 0.03); top: 50%; left: 10%; transform: translateY(-50%); }
 
 .register-wrapper { position: relative; z-index: 10; width: 100%; max-width: 420px; padding: 20px; animation: slideUp 0.5s ease-out; }
 
@@ -222,32 +222,32 @@ onUnmounted(() => {
 .logo-icon {
   width: 48px; height: 48px; margin: 0 auto 14px;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 14px; color: white;
-  box-shadow: 0 6px 20px rgba(22, 119, 255, 0.25);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.25);
 }
 .logo-icon svg { width: 24px; height: 24px; }
 .register-title { font-size: 22px; font-weight: 700; color: #1f1f1f; margin-bottom: 4px; }
-.register-subtitle { font-size: 14px; color: #8c8c8c; }
+.register-subtitle { font-size: 14px; color: #64748b; }
 
 .register-form :deep(.ant-form-item) { margin-bottom: 18px; }
 .register-form :deep(.ant-input-affix-wrapper) { padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.8); border: 1px solid #e8e8e8; }
-.register-form :deep(.ant-input-affix-wrapper:hover) { border-color: #4096ff; }
-.register-form :deep(.ant-input-affix-wrapper-focused) { border-color: #1677ff; box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.08); }
-.input-icon { color: #bfbfbf; font-size: 16px; }
+.register-form :deep(.ant-input-affix-wrapper:hover) { border-color: #60a5fa; }
+.register-form :deep(.ant-input-affix-wrapper-focused) { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08); }
+.input-icon { color: #94a3b8; font-size: 16px; }
 
 .turnstile-item { margin-bottom: 16px; }
 .turnstile-container { display: flex; justify-content: center; }
 
 .register-actions :deep(.ant-btn) {
   height: 48px; border-radius: 12px; font-size: 15px; font-weight: 600;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
-  border: none; box-shadow: 0 4px 14px rgba(22, 119, 255, 0.3);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  border: none; box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
 }
-.register-actions :deep(.ant-btn:hover) { background: linear-gradient(135deg, #0958d9 0%, #1677ff 100%); transform: translateY(-1px); }
+.register-actions :deep(.ant-btn:hover) { background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); transform: translateY(-1px); }
 
-.register-footer { text-align: center; padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 14px; color: #8c8c8c; }
-.register-footer a { color: #1677ff; cursor: pointer; margin-left: 4px; }
+.register-footer { text-align: center; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: 14px; color: #64748b; }
+.register-footer a { color: #3b82f6; cursor: pointer; margin-left: 4px; }
 .register-footer a:hover { text-decoration: underline; }
 
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }

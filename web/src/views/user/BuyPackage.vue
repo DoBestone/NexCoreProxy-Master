@@ -102,7 +102,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   DatabaseOutlined, ClockCircleOutlined, CloudServerOutlined,
@@ -112,6 +112,8 @@ import { getPackages, createOrder } from '@/api'
 
 const packages = ref([])
 const buyVisible = ref(false)
+
+onDeactivated(() => { buyVisible.value = false })
 const selectedPackage = ref(null)
 const payMethod = ref('balance')
 const buying = ref(false)
@@ -182,12 +184,12 @@ onMounted(() => {
 .page-header h1 {
   font-size: 28px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0 0 8px;
 }
 
 .page-header p {
-  color: #8c8c8c;
+  color: #64748b;
   font-size: 15px;
   margin: 0;
 }
@@ -214,11 +216,11 @@ onMounted(() => {
 .package-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
-  border-color: #1677ff;
+  border-color: #3b82f6;
 }
 
 .package-card.featured {
-  border-color: #1677ff;
+  border-color: #3b82f6;
 }
 
 .package-protocol {
@@ -230,16 +232,16 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-.package-protocol.vmess { background: #e6f4ff; color: #1677ff; }
-.package-protocol.vless { background: #f6ffed; color: #52c41a; }
-.package-protocol.trojan { background: #fff7e6; color: #d46b08; }
+.package-protocol.vmess { background: #eff6ff; color: #3b82f6; }
+.package-protocol.vless { background: #f0fdf4; color: #16a34a; }
+.package-protocol.trojan { background: #fffbeb; color: #b45309; }
 .package-protocol.shadowsocks { background: #e6fffb; color: #08979c; }
-.package-protocol.all, .package-protocol.undefined { background: #f5f5f5; color: #8c8c8c; }
+.package-protocol.all, .package-protocol.undefined { background: #f1f5f9; color: #64748b; }
 
 .package-name {
   font-size: 20px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin-bottom: 16px;
 }
 
@@ -249,14 +251,14 @@ onMounted(() => {
 
 .package-price .currency {
   font-size: 18px;
-  color: #1677ff;
+  color: #3b82f6;
   font-weight: 500;
 }
 
 .package-price .amount {
   font-size: 42px;
   font-weight: 700;
-  color: #1677ff;
+  color: #3b82f6;
   line-height: 1;
 }
 
@@ -266,8 +268,8 @@ onMounted(() => {
   gap: 12px;
   margin-bottom: 24px;
   padding: 20px 0;
-  border-top: 1px solid #f0f0f0;
-  border-bottom: 1px solid #f0f0f0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .feature {
@@ -276,17 +278,17 @@ onMounted(() => {
   justify-content: center;
   gap: 8px;
   font-size: 14px;
-  color: #595959;
+  color: #475569;
 }
 
 .feature .anticon {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .buy-btn {
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border: none;
   border-radius: 10px;
   color: white;
@@ -298,7 +300,7 @@ onMounted(() => {
 
 .buy-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(22, 119, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
 }
 
 /* 空状态 */
@@ -311,12 +313,12 @@ onMounted(() => {
 
 .empty-icon {
   font-size: 48px;
-  color: #d9d9d9;
+  color: #cbd5e1;
   margin-bottom: 16px;
 }
 
 .empty-state p {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 /* 加载状态 */
@@ -343,17 +345,17 @@ onMounted(() => {
 }
 
 .summary-item .label {
-  color: #8c8c8c;
+  color: #64748b;
 }
 
 .summary-item .value {
   font-weight: 500;
-  color: #262626;
+  color: #1e293b;
 }
 
 .summary-item .value.price {
   font-size: 18px;
-  color: #ff4d4f;
+  color: #dc2626;
   font-weight: 700;
 }
 
@@ -363,7 +365,7 @@ onMounted(() => {
 
 .method-label {
   font-size: 13px;
-  color: #8c8c8c;
+  color: #64748b;
   margin-bottom: 12px;
 }
 
@@ -387,17 +389,17 @@ onMounted(() => {
 }
 
 .method-option:hover {
-  border-color: #d9d9d9;
+  border-color: #cbd5e1;
 }
 
 .method-option.active {
-  border-color: #1677ff;
-  background: #e6f4ff;
+  border-color: #3b82f6;
+  background: #eff6ff;
 }
 
 .method-option .anticon {
   font-size: 24px;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 /* 响应式 */

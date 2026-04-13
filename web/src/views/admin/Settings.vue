@@ -45,11 +45,11 @@
         <template #title>
           <div class="card-title">
             <CodeOutlined />
-            Agent 安装命令
+            节点安装命令
           </div>
         </template>
         
-        <p class="card-desc">在节点服务器上执行以下命令安装 Agent：</p>
+        <p class="card-desc">在节点服务器上执行以下命令安装代理程序：</p>
         
         <div class="code-block">
           <pre>{{ installCommand }}</pre>
@@ -60,7 +60,7 @@
         
         <div class="tips">
           <InfoCircleOutlined />
-          <span>安装完成后，节点将自动连接到 Master 并上线</span>
+          <span>安装完成后，节点将自动连接到主控并上线</span>
         </div>
       </a-card>
       
@@ -115,10 +115,11 @@
 <script setup>
 import { ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { 
-  SettingOutlined, LockOutlined, CodeOutlined, 
-  InfoCircleOutlined, CopyOutlined, GithubOutlined 
+import {
+  SettingOutlined, LockOutlined, CodeOutlined,
+  InfoCircleOutlined, CopyOutlined, GithubOutlined
 } from '@ant-design/icons-vue'
+import { updatePassword } from '@/api'
 
 const passwordForm = ref({
   oldPassword: '',
@@ -127,13 +128,26 @@ const passwordForm = ref({
 
 const installCommand = `bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -u admin -pass YourPassword`
 
-const changePassword = () => {
+const changingPassword = ref(false)
+const changePassword = async () => {
   if (!passwordForm.value.oldPassword || !passwordForm.value.newPassword) {
     message.warning('请填写完整')
     return
   }
-  message.success('密码修改成功')
-  passwordForm.value = { oldPassword: '', newPassword: '' }
+  if (passwordForm.value.newPassword.length < 6) {
+    message.warning('新密码至少6位')
+    return
+  }
+  changingPassword.value = true
+  try {
+    await updatePassword(passwordForm.value)
+    message.success('密码修改成功')
+    passwordForm.value = { oldPassword: '', newPassword: '' }
+  } catch (e) {
+    // error already shown by request interceptor
+  } finally {
+    changingPassword.value = false
+  }
 }
 
 const copyCommand = () => {
@@ -154,12 +168,12 @@ const copyCommand = () => {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
   margin: 0 0 24px;
 }
 
 .title-icon {
-  color: #1677ff;
+  color: #3b82f6;
   font-size: 24px;
 }
 
@@ -181,11 +195,11 @@ const copyCommand = () => {
 }
 
 .card-title .anticon {
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 .card-desc {
-  color: #595959;
+  color: #475569;
   margin-bottom: 16px;
 }
 
@@ -241,10 +255,10 @@ const copyCommand = () => {
   gap: 8px;
   margin-top: 12px;
   padding: 12px 16px;
-  background: #e6f4ff;
+  background: #eff6ff;
   border-radius: 8px;
   font-size: 13px;
-  color: #1677ff;
+  color: #3b82f6;
 }
 
 /* 关于内容 */
@@ -258,7 +272,7 @@ const copyCommand = () => {
   gap: 12px;
   margin-bottom: 20px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .logo-icon {
@@ -267,7 +281,7 @@ const copyCommand = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
   border-radius: 12px;
   color: white;
 }
@@ -280,7 +294,7 @@ const copyCommand = () => {
 .logo-text {
   font-size: 20px;
   font-weight: 700;
-  color: #262626;
+  color: #1e293b;
 }
 
 .about-info {
@@ -295,13 +309,13 @@ const copyCommand = () => {
 }
 
 .info-item .label {
-  color: #8c8c8c;
+  color: #64748b;
   width: 60px;
   flex-shrink: 0;
 }
 
 .info-item .value {
-  color: #262626;
+  color: #1e293b;
 }
 
 .about-links {
@@ -314,16 +328,16 @@ const copyCommand = () => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #f5f5f5;
+  background: #f1f5f9;
   border-radius: 8px;
-  color: #595959;
+  color: #475569;
   text-decoration: none;
   transition: all 0.15s ease;
 }
 
 .link-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 @keyframes fadeIn {
