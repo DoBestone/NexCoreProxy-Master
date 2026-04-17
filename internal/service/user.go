@@ -303,8 +303,8 @@ func (s *UserService) activatePackage(tx *gorm.DB, user *model.User, pkg *model.
 		user.TrojanPassword = randomToken(32)
 	}
 	if user.SS2022Password == "" {
-		// SS-2022 PSK 是 base64(16 bytes) for AES-128-GCM；用 hex 也能用，简单起见复用 token
-		user.SS2022Password = randomToken(16)
+		// SS-2022 AES-128-GCM 需要 16 字节 base64 编码的 PSK，xray 和客户端都按 base64 解
+		user.SS2022Password = randomSS2022PSK(16)
 	}
 	if user.SubscribeToken == "" {
 		user.SubscribeToken = randomSubscribeToken()

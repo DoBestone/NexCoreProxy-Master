@@ -234,7 +234,6 @@ const pageTitleMap = {
   inbounds:         { title: '入站管理',   sub: '协议入站定义，agent 拉取自动同步到 xray' },
   'relay-bindings': { title: '中转绑定',   sub: 'Relay 节点绑定 Backend，自动展开为转发条目' },
   certs:            { title: '证书管理',   sub: 'ACME 自动签发与续期（Cloudflare DNS-01）' },
-  'relay-rules':    { title: '中转规则 (旧)', sub: '已被中转绑定取代，仅做兼容查看' },
   users:            { title: '用户管理',   sub: '账号、流量与到期时间' },
   packages:         { title: '套餐管理',   sub: '价格、流量与协议组合' },
   orders:           { title: '订单管理',   sub: '所有用户订单' },

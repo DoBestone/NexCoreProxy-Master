@@ -176,7 +176,7 @@ func (s *InboundService) autofill(in *model.Inbound) error {
 		case "ss", "shadowsocks":
 			settings, _ := json.Marshal(map[string]any{
 				"method":   "2022-blake3-aes-128-gcm",
-				"password": randomToken(16), // SS-2022 server key
+				"password": randomSS2022PSK(16), // server-level PSK，base64(16 bytes)
 			})
 			in.SettingsJSON = string(settings)
 		case "hysteria2", "hy2":

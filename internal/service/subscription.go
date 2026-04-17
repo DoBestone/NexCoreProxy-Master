@@ -39,8 +39,9 @@ type ProxyNode struct {
 	Security    string // none/tls/reality
 
 	// 协议凭据
-	UUID     string
-	Password string // trojan/ss
+	UUID           string
+	Password       string // trojan/ss (user-level PSK)
+	ServerPassword string // SS-2022 多用户：server-level PSK，订阅 URL 需拼进去
 
 	// stream 细节（直接传给客户端）
 	StreamSettings map[string]any // 已渲染好的 streamSettings 子树
@@ -245,10 +246,30 @@ func fillCredsAndStream(pn *ProxyNode, u *model.User, inb *model.Inbound) {
 		pn.Password = u.TrojanPassword
 	case "ss":
 		pn.Password = u.SS2022Password
+		// SS-2022 多用户需要 server-level PSK 和 method，从 SettingsJSON 抽出来
+		if settings := decodeJSONMap(inb.SettingsJSON); settings != nil {
+			if p, ok := settings["password"].(string); ok {
+				pn.ServerPassword = p
+			}
+		}
 	case "hysteria2", "tuic":
 		pn.Password = u.UUID // hy2/tuic 共用 UUID 当 password
 	}
 	pn.StreamSettings = decodeJSONMap(inb.StreamJSON)
+	// SS 协议特殊：method 存在 SettingsJSON 而不是 StreamJSON
+	if inb.Protocol == "ss" {
+		if pn.StreamSettings == nil {
+			pn.StreamSettings = map[string]any{}
+		}
+		if settings := decodeJSONMap(inb.SettingsJSON); settings != nil {
+			if m, ok := settings["method"].(string); ok {
+				pn.StreamSettings["method"] = m
+			}
+			if p, ok := settings["password"].(string); ok {
+				pn.StreamSettings["password"] = p
+			}
+		}
+	}
 	pn.TLSSettings = decodeJSONMap(inb.TLSJSON)
 	if inb.Security == "reality" {
 		pn.RealitySettings = map[string]any{

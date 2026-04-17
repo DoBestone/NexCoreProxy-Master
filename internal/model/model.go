@@ -262,25 +262,6 @@ type TrafficLog struct {
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
-// RelayRule 中转规则
-type RelayRule struct {
-	ID               uint      `json:"id" gorm:"primaryKey"`
-	RelayNodeID      uint      `json:"relayNodeId" gorm:"index:idx_relay_backend,priority:1"`
-	BackendNodeID    uint      `json:"backendNodeId" gorm:"index:idx_relay_backend,priority:2"`
-	RelayInboundPort int       `json:"relayInboundPort"`                  // 中转节点上的入站端口
-	RelayInboundTag  string    `json:"relayInboundTag" gorm:"size:100"`  // Xray inbound tag
-	RelayOutboundTag string    `json:"relayOutboundTag" gorm:"size:100"` // Xray outbound tag
-	Protocol         string    `json:"protocol" gorm:"size:20"`           // vmess/vless/trojan/shadowsocks
-	Enable           bool      `json:"enable" gorm:"default:true"`
-	Remark           string    `json:"remark" gorm:"size:255"`
-	SyncStatus       string    `json:"syncStatus" gorm:"size:20;default:'pending'"` // pending/synced/error
-	SyncError        string    `json:"syncError" gorm:"size:500"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
-	RelayNode        Node      `json:"relayNode" gorm:"foreignKey:RelayNodeID"`
-	BackendNode      Node      `json:"backendNode" gorm:"foreignKey:BackendNodeID"`
-}
-
 // NexCoreConfig NexCore 代理配置（用于在线更新）
 type NexCoreConfig struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`

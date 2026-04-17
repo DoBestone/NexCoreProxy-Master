@@ -127,13 +127,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.GET("/nodes/:id/api-token", h.GetNodeAPIToken)
 				admin.POST("/nodes/:id/api-token", h.GenNodeAPIToken)
 
-				// 中转规则管理（旧版，待退役）
-				admin.GET("/relay-rules", h.GetRelayRules)
-				admin.POST("/relay-rules", h.CreateRelayRule)
-				admin.DELETE("/relay-rules/:id", h.DeleteRelayRule)
-				admin.POST("/relay-rules/:id/sync", h.SyncRelayRule)
-
 				// === 自研 agent 架构：Inbound + RelayBinding 管理 ===
+				// （旧 relay-rules 路由已下线，被 relay-bindings 取代）
 				admin.GET("/inbounds", h.ListInbounds)
 				admin.POST("/inbounds", h.CreateInbound)
 				admin.PUT("/inbounds/:id", h.UpdateInbound)

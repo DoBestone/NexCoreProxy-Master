@@ -55,11 +55,7 @@ export const resetNodeCredentials = (id, data) => request.post(`/nodes/${id}/res
 export const checkNodeUpdate = (id) => request.post(`/nodes/${id}/check-update`)
 export const updateNodeAgent = (id) => request.post(`/nodes/${id}/update-agent`)
 
-// 中转规则
-export const getRelayRules = () => request.get('/relay-rules')
-export const createRelayRule = (data) => request.post('/relay-rules', data)
-export const deleteRelayRule = (id) => request.delete(`/relay-rules/${id}`)
-export const syncRelayRule = (id) => request.post(`/relay-rules/${id}/sync`)
+// 旧的 /relay-rules API 已退役，改用 relay-bindings
 
 // 套餐管理
 export const getAllPackages = () => request.get('/admin/packages')

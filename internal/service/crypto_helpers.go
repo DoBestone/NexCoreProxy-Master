@@ -60,3 +60,17 @@ func randomSubscribeToken() string {
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
+
+// randomSS2022PSK 生成符合 SS-2022 规范的 PSK
+//
+// SS-2022 的 password 字段要求是 base64 编码的原始密钥字节：
+//   - AES-128-GCM → 16 bytes → base64 22 chars (padded 24)
+//   - AES-256-GCM → 32 bytes → base64 44 chars
+//   - chacha20-poly1305 → 32 bytes → base64 44 chars
+//
+// 不能用 hex 字符串当 PSK — xray 会用 base64 解码得到乱字节，与客户端不匹配导致 AEAD 失败。
+func randomSS2022PSK(bytes int) string {
+	b := make([]byte, bytes)
+	_, _ = rand.Read(b)
+	return base64.StdEncoding.EncodeToString(b)
+}

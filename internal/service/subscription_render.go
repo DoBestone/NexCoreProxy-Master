@@ -125,7 +125,14 @@ func vmessURI(n *ProxyNode) string {
 	return "vmess://" + base64.StdEncoding.EncodeToString(raw)
 }
 
-// ss://base64(method:password)@host:port#name (sip002)
+// ss://base64(method:[serverPSK:]userPSK)@host:port#name
+//
+// SS-2022 多用户模式需要 server_psk:user_psk 两段（xray/sing-box 规范）：
+//   ss://base64(2022-blake3-aes-128-gcm:server_psk:user_psk)@...
+// 老版 SS 单用户只一段：
+//   ss://base64(aes-128-gcm:user_psk)@...
+//
+// 2022-blake3-* 协议必须带 server_psk 才能和 xray 多用户服务端对上。
 func ssURI(n *ProxyNode) string {
 	if n.Password == "" {
 		return ""
@@ -134,7 +141,15 @@ func ssURI(n *ProxyNode) string {
 	if method == "" {
 		method = "2022-blake3-aes-128-gcm"
 	}
-	userInfo := base64.RawURLEncoding.EncodeToString([]byte(method + ":" + n.Password))
+	serverPSK, _ := n.StreamSettings["password"].(string) // 从 inbound.settings 读 server-level PSK
+
+	var userInfoRaw string
+	if strings.HasPrefix(method, "2022-") && serverPSK != "" {
+		userInfoRaw = method + ":" + serverPSK + ":" + n.Password
+	} else {
+		userInfoRaw = method + ":" + n.Password
+	}
+	userInfo := base64.StdEncoding.EncodeToString([]byte(userInfoRaw))
 	return fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, n.Host, n.Port, url.QueryEscape(n.Name))
 }
 
