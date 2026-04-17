@@ -44,13 +44,20 @@ if ! command -v systemctl >/dev/null 2>&1; then
 fi
 
 # --- 2. 依赖工具 ---
+# 先跑一次 apt-get update，避免全新系统 / 重装后包索引过期装不上
+_pkg_synced=0
 ensure_pkg() {
   for pkg in "$@"; do
     if ! command -v "$pkg" >/dev/null 2>&1; then
       log "installing $pkg"
-      if   command -v apt-get >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
-      elif command -v yum     >/dev/null; then yum install -y "$pkg"
-      elif command -v dnf     >/dev/null; then dnf install -y "$pkg"
+      if command -v apt-get >/dev/null; then
+        if [ "$_pkg_synced" = "0" ]; then
+          DEBIAN_FRONTEND=noninteractive apt-get update -qq || true
+          _pkg_synced=1
+        fi
+        DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
+      elif command -v yum >/dev/null; then yum install -y "$pkg"
+      elif command -v dnf >/dev/null; then dnf install -y "$pkg"
       else die "no supported package manager (apt/yum/dnf)"
       fi
     fi

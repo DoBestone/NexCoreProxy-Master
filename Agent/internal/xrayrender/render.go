@@ -171,8 +171,9 @@ func renderTrojan(inb *protocol.Inbound, clients []map[string]any) (map[string]a
 }
 
 func renderShadowsocks(inb *protocol.Inbound, clients []map[string]any) (map[string]any, error) {
-	// SS-2022 多用户：clients 转成 settings.clients；method 从 SettingsJSON 读
-	settings := mergeSettings(inb.SettingsJSON, "clients", "password")
+	// SS-2022 多用户：clients 转成 settings.clients；保留 SettingsJSON 里的 server password（PSK）+ method
+	// 注意：不能 drop "password"，它是 server 级 PSK，xray SS-2022 启动必需
+	settings := mergeSettings(inb.SettingsJSON, "clients")
 	if _, ok := settings["method"]; !ok {
 		settings["method"] = "2022-blake3-aes-128-gcm"
 	}

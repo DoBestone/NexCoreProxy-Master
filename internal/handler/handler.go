@@ -121,10 +121,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.POST("/nodes/:id/reset-credentials", h.ResetNodeCredentials)
 				admin.POST("/nodes/:id/check-update", h.CheckNodeUpdate)
 				admin.POST("/nodes/:id/update-agent", h.UpdateNodeAgent)
-				admin.GET("/nodes/:id/inbounds", h.GetNodeInbounds)
-				admin.POST("/nodes/:id/inbounds", h.AddNodeInbound)
-				admin.DELETE("/nodes/:id/inbounds/:inboundId", h.DeleteNodeInbound)
-				admin.POST("/nodes/:id/inbounds/:inboundId/toggle", h.ToggleNodeInbound)
+				// node-scoped inbound 路由已退役：全部走 /api/inbounds?nodeId=X
 				admin.POST("/nodes/:id/ssh-status", h.SSHNodeStatus)
 				admin.POST("/nodes/:id/ssh-restart-xray", h.SSHRestartXray)
 				admin.GET("/nodes/:id/api-token", h.GetNodeAPIToken)

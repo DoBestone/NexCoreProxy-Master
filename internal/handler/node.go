@@ -231,74 +231,9 @@ func (h *Handler) SyncNode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "obj": status})
 }
 
-// GetNodeInbounds 获取节点入站列表
-func (h *Handler) GetNodeInbounds(c *gin.Context) {
-	id := parseUint(c.Param("id"))
-
-	inbounds, err := h.node.GetInbounds(id)
-	if err != nil {
-		log.Printf("获取节点入站列表失败 [id=%d]: %v", id, err)
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "获取入站列表失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "obj": inbounds})
-}
-
-// AddNodeInbound 添加节点入站
-func (h *Handler) AddNodeInbound(c *gin.Context) {
-	id := parseUint(c.Param("id"))
-
-	var inbound map[string]interface{}
-	if err := c.ShouldBindJSON(&inbound); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
-		return
-	}
-
-	if err := h.node.AddInbound(id, inbound); err != nil {
-		log.Printf("添加节点入站失败 [id=%d]: %v", id, err)
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "添加入站失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// DeleteNodeInbound 删除节点入站
-func (h *Handler) DeleteNodeInbound(c *gin.Context) {
-	id := parseUint(c.Param("id"))
-	inboundId := parseInt(c.Param("inboundId"))
-
-	if err := h.node.DeleteInbound(id, inboundId); err != nil {
-		log.Printf("删除节点入站失败 [id=%d, inbound=%d]: %v", id, inboundId, err)
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "删除入站失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// ToggleNodeInbound 启用/禁用入站
-func (h *Handler) ToggleNodeInbound(c *gin.Context) {
-	id := parseUint(c.Param("id"))
-	inboundId := parseInt(c.Param("inboundId"))
-
-	var req struct {
-		Enable bool `json:"enable"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "参数错误"})
-		return
-	}
-
-	if err := h.node.SSHEnableInbound(id, inboundId, req.Enable); err != nil {
-		log.Printf("切换入站状态失败 [id=%d, inbound=%d]: %v", id, inboundId, err)
-		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "操作失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
+// Node-scoped inbound handlers 已迁移到 /api/inbounds?nodeId=X
+// 旧的 GetNodeInbounds / AddNodeInbound / DeleteNodeInbound / ToggleNodeInbound
+// 直接操作 3x-ui，与 Master DB 双写容易不一致，已废弃
 
 // SSHNodeStatus 通过SSH获取节点状态
 func (h *Handler) SSHNodeStatus(c *gin.Context) {

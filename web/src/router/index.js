@@ -86,12 +86,6 @@ const routes = [
         meta: { title: '订单管理', icon: 'ShoppingOutlined' }
       },
       {
-        path: 'templates',
-        name: 'Templates',
-        component: () => import('@/views/admin/Templates.vue'),
-        meta: { title: '节点模板', icon: 'FileTextOutlined' }
-      },
-      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/admin/Settings.vue'),

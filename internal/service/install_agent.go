@@ -97,6 +97,7 @@ func (s *NodeService) InstallAgent(id uint) error {
 	// 5. 收尾
 	updates := map[string]any{
 		"installed":     true,
+		"backend":       "ncp-agent",
 		"status":        "online",
 		"ssh_password":  "", // 用完即抹
 		"agent_version": "0.1.0",

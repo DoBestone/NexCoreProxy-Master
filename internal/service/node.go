@@ -262,13 +262,25 @@ func (s *NodeService) sshRun(client *ssh.Client, cmd string) (string, error) {
 }
 
 // TestConnection 测试节点连接
+//
+// 自研 agent 节点：基于最近 push 时间判活（agent 主动推架构下无独立健康端点）
+// 老 3x-ui 节点：TCP 探测面板端口
 func (s *NodeService) TestConnection(id uint) error {
 	node, err := s.GetByID(id)
 	if err != nil {
 		return err
 	}
 
-	// 简单的 TCP 连接测试，不依赖面板凭据
+	if node.IsAgentBackend() {
+		if node.LastSyncAt == nil {
+			return fmt.Errorf("agent 尚未回连，请确认已执行一键部署且节点可访问 Master")
+		}
+		if age := time.Since(*node.LastSyncAt); age > 3*time.Minute {
+			return fmt.Errorf("agent 超过 %v 未心跳（上次: %s）", age.Truncate(time.Second), node.LastSyncAt.Format(time.RFC3339))
+		}
+		return nil
+	}
+
 	addr := net.JoinHostPort(node.IP, strconv.Itoa(node.Port))
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
@@ -278,11 +290,18 @@ func (s *NodeService) TestConnection(id uint) error {
 	return nil
 }
 
-// SyncStatus 同步节点状态 (优先 HTTP API，失败回退 SSH)
+// SyncStatus 同步节点状态
+//
+// 自研 agent 节点：Master 不主动查，直接读 DB（agent 定时 push 已写入）
+// 老 3x-ui 节点：优先 HTTP API，刷 token 重试，最后回退 SSH
 func (s *NodeService) SyncStatus(id uint) (*NodeStatus, error) {
 	node, err := s.GetByID(id)
 	if err != nil {
 		return nil, err
+	}
+
+	if node.IsAgentBackend() {
+		return s.syncStatusFromDB(node), nil
 	}
 
 	// 优先尝试 HTTP API
@@ -304,6 +323,32 @@ func (s *NodeService) SyncStatus(id uint) (*NodeStatus, error) {
 
 	// 回退到 SSH
 	return s.syncStatusViaSSH(node)
+}
+
+// syncStatusFromDB 从 DB 读 agent 最近一次 push 写入的状态快照
+//
+// LastSyncAt 超过 3 分钟视为离线：xray_state = "unknown" + status = "offline"，
+// 用于前端给节点挂"离线"标签；不报错以避免前端显示"请求失败"。
+func (s *NodeService) syncStatusFromDB(node *model.Node) *NodeStatus {
+	xrayState := "running"
+	nodeStatus := "online"
+	if node.LastSyncAt == nil || time.Since(*node.LastSyncAt) > 3*time.Minute {
+		xrayState = "unknown"
+		nodeStatus = "offline"
+	}
+	// 只更新 status 字段，其他指标保留 agent 上次 push 的值
+	_ = model.GetDB().Model(&model.Node{}).Where("id = ?", node.ID).
+		Update("status", nodeStatus).Error
+	return &NodeStatus{
+		CPU:           node.CPU,
+		Memory:        node.Memory,
+		Disk:          node.Disk,
+		Uptime:        node.Uptime,
+		XrayVersion:   node.XrayVersion,
+		XrayState:     xrayState,
+		UploadTotal:   node.UploadTotal,
+		DownloadTotal: node.DownloadTotal,
+	}
 }
 
 // syncStatusViaAPI 通过 HTTP API 同步状态
@@ -643,6 +688,31 @@ func (s *NodeService) SSHGetStatus(nodeID uint) (map[string]interface{}, error) 
 		return nil, err
 	}
 
+	// agent 节点没有 3x-ui，用最近一次 push 的快照组装等价视图
+	if node.IsAgentBackend() {
+		info := map[string]interface{}{
+			"service_status": "active",
+			"version":        node.AgentVersion,
+			"panel_port":     "-", // 无面板
+			"admin_user":     "-",
+			"xray_version":   node.XrayVersion,
+			"cpu":            node.CPU,
+			"memory":         node.Memory,
+			"disk":           node.Disk,
+			"uptime":         node.Uptime,
+			"upload_total":   node.UploadTotal,
+			"download_total": node.DownloadTotal,
+			"backend":        "ncp-agent",
+		}
+		if node.LastSyncAt != nil {
+			info["last_sync_at"] = node.LastSyncAt.Format(time.RFC3339)
+			if time.Since(*node.LastSyncAt) > 3*time.Minute {
+				info["service_status"] = "stale"
+			}
+		}
+		return info, nil
+	}
+
 	sshClient, err := s.SSHConnect(node.IP, node.SSHPort, node.SSHUser, node.SSHPassword)
 	if err != nil {
 		return nil, fmt.Errorf("SSH连接失败: %v", err)
@@ -806,12 +876,18 @@ func (s *NodeService) RestartXray(nodeID uint) error {
 		return err
 	}
 
-	// 优先使用 SSH 方式重启
+	// 自研 agent 节点：bump config etag，agent 下次心跳拉到新版本会热重载 xray
+	if node.IsAgentBackend() {
+		if err := model.BumpEtag(nodeID); err != nil {
+			return fmt.Errorf("触发 agent 重载失败: %v", err)
+		}
+		return nil
+	}
+
+	// 老 3x-ui 节点：优先 SSH，兜底 panel API
 	if node.SSHPassword != "" {
 		return s.restartXrayViaSSH(node)
 	}
-
-	// 备用：通过 x-ui API 重启
 	client, err := s.getClient(nodeID)
 	if err != nil {
 		return err

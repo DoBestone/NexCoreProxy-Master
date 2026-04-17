@@ -171,7 +171,6 @@ import {
   TeamOutlined,
   AppstoreOutlined,
   ShoppingOutlined,
-  FileTextOutlined,
   NotificationOutlined,
   MailOutlined,
   SettingOutlined,
@@ -207,8 +206,7 @@ const menuGroups = [
       { key: 'nodes',           path: '/admin/nodes',           label: '服务器管理', icon: markRaw(CloudServerOutlined) },
       { key: 'inbounds',        path: '/admin/inbounds',        label: '入站管理',   icon: markRaw(ApiOutlined) },
       { key: 'relay-bindings',  path: '/admin/relay-bindings',  label: '中转绑定',   icon: markRaw(SwapOutlined) },
-      { key: 'certs',           path: '/admin/certs',           label: '证书管理',   icon: markRaw(SafetyCertificateOutlined) },
-      { key: 'templates',       path: '/admin/templates',       label: '服务模板',   icon: markRaw(FileTextOutlined) }
+      { key: 'certs',           path: '/admin/certs',           label: '证书管理',   icon: markRaw(SafetyCertificateOutlined) }
     ]
   },
   {
@@ -237,7 +235,6 @@ const pageTitleMap = {
   'relay-bindings': { title: '中转绑定',   sub: 'Relay 节点绑定 Backend，自动展开为转发条目' },
   certs:            { title: '证书管理',   sub: 'ACME 自动签发与续期（Cloudflare DNS-01）' },
   'relay-rules':    { title: '中转规则 (旧)', sub: '已被中转绑定取代，仅做兼容查看' },
-  templates:        { title: '服务模板',   sub: '预置入站与参数模板（旧版）' },
   users:            { title: '用户管理',   sub: '账号、流量与到期时间' },
   packages:         { title: '套餐管理',   sub: '价格、流量与协议组合' },
   orders:           { title: '订单管理',   sub: '所有用户订单' },

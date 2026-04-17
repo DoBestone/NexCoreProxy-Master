@@ -43,7 +43,7 @@ func GetDB() *gorm.DB {
 //
 // 旧表的 struct 仍保留在 model 包内（供个别 legacy handler 编译过），但运行时不依赖。
 func AutoMigrate() error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		// 业务核心
 		&User{},
 		&Node{},
@@ -63,7 +63,19 @@ func AutoMigrate() error {
 		&NodeEvent{},
 		&AcmeAccount{},
 		&Certificate{},
-	)
+	); err != nil {
+		return err
+	}
+	// 历史数据回填：已部署 ncp-agent 的节点标记为新后端
+	db.Model(&Node{}).
+		Where("(backend IS NULL OR backend = '' OR backend = 'xui') AND installed = ?", true).
+		Update("backend", "ncp-agent")
+	return nil
+}
+
+// IsAgentBackend 是否跑自研 agent（vs 老的 3x-ui）
+func (n *Node) IsAgentBackend() bool {
+	return n.Backend == "ncp-agent"
 }
 
 // DropLegacyTables 一次性 DROP 旧表（user_nodes / inbound_templates / traffic_logs / relay_rules）
@@ -153,6 +165,10 @@ type Node struct {
 	Region        string     `json:"region" gorm:"size:50"`                          // 自动绑定/订阅分组用 (cn/hk/us/...)
 	Installed     bool       `json:"installed" gorm:"default:false"`                 // ncp-agent 是否已成功部署
 	AgentVersion  string     `json:"agentVersion" gorm:"size:30"`                    // ncp-agent 版本（push 时回报）
+	// Backend 指示节点后端类型，影响运维 API 走哪条路径。
+	//   "xui"       — 老节点通过 3x-ui panel API 管控（遗留，待退役）
+	//   "ncp-agent" — 自研 agent + xray，通过 /v1/server/* HTTP 协议管控
+	Backend string `json:"backend" gorm:"size:16;default:'xui';index"`
 	Enable        bool       `json:"enable" gorm:"default:true"`
 	Remark        string     `json:"remark" gorm:"size:255"`
 	Status        string     `json:"status" gorm:"size:20;default:'unknown'"`

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"nexcoreproxy-master/internal/model"
 )
@@ -69,20 +70,37 @@ func (s *SubscriptionService) GenerateForUser(userID uint) ([]ProxyNode, error) 
 		_ = db.Model(&user).Update("uuid", user.UUID).Error
 	}
 
+	isAdmin := user.Role == "admin"
+
+	// 套餐状态预检（admin 不受限，方便管理员自测全部节点）
+	if !isAdmin {
+		if msg := subscriptionNotice(&user); msg != "" {
+			return []ProxyNode{noticeProxyNode(msg)}, nil
+		}
+	}
+
 	// 1. 找出该用户授权的 inbound
 	var inbounds []model.Inbound
-	err := db.Raw(`
-		SELECT DISTINCT i.*
-		FROM inbounds i
-		JOIN package_inbounds pi ON pi.inbound_id = i.id
-		JOIN orders o ON o.package_id = pi.package_id
-		WHERE o.user_id = ? AND o.status = 'paid' AND i.enable = true
-	`, userID).Scan(&inbounds).Error
+	var err error
+	if isAdmin {
+		err = db.Where("enable = ?", true).Find(&inbounds).Error
+	} else {
+		err = db.Raw(`
+			SELECT DISTINCT i.*
+			FROM inbounds i
+			JOIN package_inbounds pi ON pi.inbound_id = i.id
+			JOIN orders o ON o.package_id = pi.package_id
+			WHERE o.user_id = ? AND o.status = 'paid' AND i.enable = true
+		`, userID).Scan(&inbounds).Error
+	}
 	if err != nil {
 		return nil, fmt.Errorf("query inbounds: %w", err)
 	}
 	if len(inbounds) == 0 {
-		return []ProxyNode{}, nil
+		if isAdmin {
+			return []ProxyNode{noticeProxyNode("【暂无启用 inbound】请先创建节点入站")}, nil
+		}
+		return []ProxyNode{noticeProxyNode("【暂无可用节点】请先购买套餐")}, nil
 	}
 
 	// 2. 拉这些 inbound 所在的节点信息（地址、region）
@@ -260,4 +278,33 @@ func decodeJSONMap(s string) map[string]any {
 		return nil
 	}
 	return out
+}
+
+// subscriptionNotice 返回订阅不可用时的提示文本，空串表示一切正常
+//
+// 检查顺序：到期 → 流量。用户同时过期 + 超流量时优先提示到期。
+func subscriptionNotice(u *model.User) string {
+	if u.ExpireAt != nil && !u.ExpireAt.IsZero() && u.ExpireAt.Before(time.Now()) {
+		return fmt.Sprintf("【订阅已过期 %s】请续费", u.ExpireAt.Format("2006-01-02"))
+	}
+	if u.TrafficLimit > 0 && u.TrafficUsed >= u.TrafficLimit {
+		return "【流量已耗尽】请等待重置或升级套餐"
+	}
+	return ""
+}
+
+// noticeProxyNode 生成一个"占位"节点：host/port/uuid 都是无效值，连接必然失败
+//
+// 目的是让客户端节点列表显示提示文本（节点名字）。v2rayN/Clash 等会把节点名直接列出来，
+// 用户一打开客户端就能看到状态，比返回空订阅更直观。
+func noticeProxyNode(msg string) ProxyNode {
+	return ProxyNode{
+		Name:     msg,
+		Protocol: "vmess",
+		Host:     "127.0.0.1",
+		Port:     1,
+		Network:  "tcp",
+		Security: "none",
+		UUID:     "00000000-0000-0000-0000-000000000000",
+	}
 }

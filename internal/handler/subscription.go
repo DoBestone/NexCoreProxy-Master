@@ -234,6 +234,15 @@ func (h *Handler) PanelProxy(c *gin.Context) {
 		return
 	}
 
+	// 自研 agent 节点没有 3x-ui 面板，面板代理不适用
+	if node.IsAgentBackend() {
+		c.JSON(http.StatusGone, gin.H{
+			"success": false,
+			"msg":     "该节点使用自研 agent 架构，无 3x-ui 面板。请在 Master 后台统一管理入站。",
+		})
+		return
+	}
+
 	// SSRF 防护：解析目标地址并验证非内部地址
 	nodeIP := net.ParseIP(node.IP)
 	resolvedHost := node.IP // 使用解析后的 IP 构建 URL，防止 DNS rebinding

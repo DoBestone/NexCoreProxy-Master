@@ -46,10 +46,7 @@ export const deleteNode = (id) => request.delete(`/nodes/${id}`)
 export const testNode = (id) => request.post(`/nodes/${id}/test`)
 export const syncNode = (id) => request.post(`/nodes/${id}/sync`)
 export const installNode = (id) => request.post(`/nodes/${id}/install`)
-export const getNodeInbounds = (id) => request.get(`/nodes/${id}/inbounds`)
-export const addNodeInbound = (id, data) => request.post(`/nodes/${id}/inbounds`, data)
-export const deleteNodeInbound = (nodeId, inboundId) => request.delete(`/nodes/${nodeId}/inbounds/${inboundId}`)
-export const toggleNodeInbound = (nodeId, inboundId, enable) => request.post(`/nodes/${nodeId}/inbounds/${inboundId}/toggle`, { enable })
+// 旧的 node-scoped inbound API 已退役，统一走下方的 /inbounds 接口（按 nodeId 过滤）
 export const restartNodeXray = (id) => request.post(`/nodes/${id}/restart`)
 export const sshNodeStatus = (id) => request.post(`/nodes/${id}/ssh-status`)
 export const getNodeAPIToken = (id) => request.get(`/nodes/${id}/api-token`)
@@ -73,11 +70,6 @@ export const deletePackage = (id) => request.delete(`/packages/${id}`)
 // 订单管理
 export const getAllOrders = () => request.get('/orders')
 export const updateOrderStatus = (id, status) => request.put(`/orders/${id}/status`, { status })
-
-// 入站模板
-export const getTemplates = () => request.get('/templates')
-export const addTemplate = (data) => request.post('/templates', data)
-export const deleteTemplate = (id) => request.delete(`/templates/${id}`)
 
 // 公告管理
 export const getAdminAnnouncements = () => request.get('/admin/announcements')
