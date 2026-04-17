@@ -1,13 +1,5 @@
 <template>
   <div class="settings-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <h1 class="page-title">
-        <SettingOutlined class="title-icon" />
-        系统设置
-      </h1>
-    </div>
-    
     <!-- 设置卡片 -->
     <div class="settings-grid">
       <!-- 密码修改 -->
@@ -162,25 +154,10 @@ const copyCommand = () => {
   max-width: 900px;
 }
 
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 24px;
-}
-
-.title-icon {
-  color: #3b82f6;
-  font-size: 24px;
-}
-
 .settings-grid {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 .settings-card {

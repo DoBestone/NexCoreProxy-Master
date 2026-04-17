@@ -5,6 +5,18 @@
 
 /* CSS 变量 - 设计令牌 */
 :root {
+  /* 字体族 —— 双字体搭配 */
+  --font-display: 'Manrope', 'Satoshi', ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-body:    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+
+  /* 节奏间距 (主操作区) */
+  --space-section: 32px;
+  --space-card:    24px;
+  --space-field:   16px;
+  --space-inline:  12px;
+  --space-tight:   8px;
+
   /* 主色调 - 亮蓝色系 */
   --primary-50: #eff6ff;
   --primary-100: #dbeafe;
@@ -91,12 +103,22 @@ html, body, #app {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.6;
   color: var(--gray-700);
   background: var(--bg-secondary);
+}
+
+h1, h2, h3, h4, .page-title, .card-title, .crumb-title {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+code, kbd, pre, samp,
+.address, .tx-hash, .amount, .mono, .tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ============================================
@@ -125,38 +147,38 @@ body {
    ============================================ */
 
 .ant-card {
-  border-radius: var(--radius-lg) !important;
-  border: 1px solid rgba(0, 0, 0, 0.04) !important;
-  box-shadow: var(--shadow-sm) !important;
-  background: var(--bg-primary) !important;
-  transition: all var(--transition-normal) !important;
+  border-radius: 12px !important;
+  border: 1px solid #e6ecf4 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03) !important;
+  background: #ffffff !important;
+  transition: border-color .15s, box-shadow .15s !important;
 }
 
 .ant-card:hover {
-  box-shadow: var(--shadow-md) !important;
-  transform: translateY(-2px);
+  border-color: #c7d8f2 !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.06) !important;
 }
 
 .ant-card-head {
-  border-bottom: 1px solid var(--gray-100) !important;
-  padding: var(--spacing-md) var(--spacing-lg) !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  padding: 10px 18px !important;
   min-height: auto !important;
 }
 
 .ant-card-head-title {
   font-weight: 600 !important;
-  color: var(--gray-800) !important;
-  font-size: 15px !important;
+  color: #0f172a !important;
+  font-size: 14px !important;
+  padding: 8px 0 !important;
 }
 
 .ant-card-body {
-  padding: var(--spacing-lg) !important;
+  padding: 16px 18px !important;
 }
 
 @media (max-width: 576px) {
-  .ant-card-body {
-    padding: var(--spacing-md) !important;
-  }
+  .ant-card-body { padding: 14px !important; }
+  .ant-card-head { padding: 10px 14px !important; }
 }
 
 /* ============================================
@@ -228,6 +250,58 @@ body {
 }
 
 /* ============================================
+   表单紧凑化
+   ============================================ */
+
+.ant-form-vertical .ant-form-item,
+.ant-form-item {
+  margin-bottom: 14px !important;
+}
+
+.ant-form-vertical .ant-form-item-label,
+.ant-form-item-label {
+  padding-bottom: 4px !important;
+}
+
+.ant-form-vertical .ant-form-item-label > label,
+.ant-form-item-label > label {
+  font-size: 12.5px !important;
+  color: #475569 !important;
+  font-weight: 500 !important;
+  height: 24px !important;
+}
+
+.ant-form-item-explain,
+.ant-form-item-extra {
+  font-size: 12px !important;
+  margin-top: 2px !important;
+}
+
+/* ============================================
+   模态框紧凑化
+   ============================================ */
+
+.ant-modal-body {
+  padding: 18px 20px !important;
+}
+
+.ant-modal-header {
+  padding: 14px 20px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.ant-modal-title {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+}
+
+.ant-modal-footer {
+  padding: 10px 20px !important;
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+/* ============================================
    表格样式
    ============================================ */
 
@@ -236,21 +310,35 @@ body {
   overflow: hidden;
 }
 
+.ant-table {
+  font-size: 13px !important;
+}
+
 .ant-table-thead > tr > th {
-  background: var(--bg-tertiary) !important;
-  color: var(--gray-600) !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
   font-weight: 600 !important;
-  border-bottom: 1px solid var(--gray-100) !important;
-  padding: 14px 16px !important;
+  font-size: 12px !important;
+  letter-spacing: .02em !important;
+  border-bottom: 1px solid #eef1f6 !important;
+  padding: 10px 14px !important;
+  line-height: 1.5 !important;
 }
 
 .ant-table-tbody > tr > td {
-  padding: 14px 16px !important;
-  border-bottom: 1px solid var(--gray-100) !important;
+  padding: 10px 14px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
 }
 
 .ant-table-tbody > tr:hover > td {
-  background: var(--primary-50) !important;
+  background: #f8fbff !important;
+}
+
+/* 紧凑型分页 */
+.ant-pagination.ant-table-pagination {
+  margin: 12px 0 0 !important;
 }
 
 /* ============================================
@@ -316,33 +404,18 @@ body {
    ============================================ */
 
 .ant-modal-content {
-  border-radius: var(--radius-xl) !important;
+  border-radius: 14px !important;
   overflow: hidden;
-}
-
-.ant-modal-header {
-  border-bottom: 1px solid var(--gray-100) !important;
-  padding: var(--spacing-lg) var(--spacing-xl) !important;
-}
-
-.ant-modal-body {
-  padding: var(--spacing-xl) !important;
-}
-
-.ant-modal-footer {
-  border-top: 1px solid var(--gray-100) !important;
-  padding: var(--spacing-md) var(--spacing-xl) !important;
 }
 
 @media (max-width: 576px) {
   .ant-modal {
-    max-width: calc(100vw - 32px) !important;
-    margin: 16px auto !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
   }
-  
-  .ant-modal-body {
-    padding: var(--spacing-lg) !important;
-  }
+  .ant-modal-body { padding: 14px 16px !important; }
+  .ant-modal-header { padding: 12px 16px !important; }
+  .ant-modal-footer { padding: 10px 16px !important; }
 }
 
 /* ============================================

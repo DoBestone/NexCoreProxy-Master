@@ -112,11 +112,12 @@ func (s *UserService) Create(username, password, email, role string) error {
 	}
 
 	user := &model.User{
-		Username: username,
-		Password: string(hashedPassword),
-		Email:    email,
-		Role:     role,
-		Enable:   true,
+		Username:       username,
+		Password:       string(hashedPassword),
+		Email:          email,
+		Role:           role,
+		Enable:         true,
+		SubscribeToken: NewSubscribeToken(),
 	}
 
 	db := model.GetDB()
@@ -127,6 +128,41 @@ func (s *UserService) Create(username, password, email, role string) error {
 	// 生成邀请码（与注册流程一致：NC + 用户ID）
 	inviteCode := fmt.Sprintf("NC%06d", user.ID)
 	return db.Model(user).Update("invite_code", inviteCode).Error
+}
+
+// NewSubscribeToken 生成 32 字符（128 bit）的随机订阅令牌，URL-safe
+func NewSubscribeToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// rand.Read 失败极罕见，fallback 到时间戳 hash 避免返回空串
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// BackfillSubscribeTokens 为历史用户补齐 SubscribeToken（幂等，仅填充空值）
+func (s *UserService) BackfillSubscribeTokens() error {
+	var users []model.User
+	if err := model.GetDB().Where("subscribe_token = '' OR subscribe_token IS NULL").Find(&users).Error; err != nil {
+		return err
+	}
+	for _, u := range users {
+		if err := model.GetDB().Model(&model.User{}).Where("id = ?", u.ID).
+			Update("subscribe_token", NewSubscribeToken()).Error; err != nil {
+			log.Printf("[SubscribeToken] 用户 %d 补齐失败: %v", u.ID, err)
+		}
+	}
+	return nil
+}
+
+// ResetSubscribeToken 为指定用户生成新的订阅令牌（旧 URL 立即失效）
+func (s *UserService) ResetSubscribeToken(userID uint) (string, error) {
+	tok := NewSubscribeToken()
+	if err := model.GetDB().Model(&model.User{}).Where("id = ?", userID).
+		Update("subscribe_token", tok).Error; err != nil {
+		return "", err
+	}
+	return tok, nil
 }
 
 // HashPassword 加密密码
@@ -251,48 +287,71 @@ func (s *UserService) ActivatePackageWithTx(db *gorm.DB, userID, packageID uint)
 	})
 }
 
-// activatePackage 内部方法：设置流量/到期时间/分配节点
+// activatePackage 自研 agent 架构版本
+//
+//   1. 确保用户有 UUID / TrojanPassword / SS2022Password（首次激活生成）
+//   2. 设置流量限额（优先 TransferGB，否则 Traffic）+ 重置 traffic_used + 续期 expire_at + 重新启用
+//   3. 套餐的 device/speed limit 同步到用户上
+//   4. 不再写 user_nodes（新架构通过 orders.paid + package_inbounds 反查授权）
+//   5. bump 该套餐覆盖到的所有节点 etag → agent 立即拉到新用户
 func (s *UserService) activatePackage(tx *gorm.DB, user *model.User, pkg *model.Package) error {
-	if pkg.Traffic > 0 {
-		user.TrafficLimit = pkg.Traffic
+	// 1. 凭据
+	if user.UUID == "" {
+		user.UUID = randomUUID()
 	}
+	if user.TrojanPassword == "" {
+		user.TrojanPassword = randomToken(32)
+	}
+	if user.SS2022Password == "" {
+		// SS-2022 PSK 是 base64(16 bytes) for AES-128-GCM；用 hex 也能用，简单起见复用 token
+		user.SS2022Password = randomToken(16)
+	}
+	if user.SubscribeToken == "" {
+		user.SubscribeToken = randomSubscribeToken()
+	}
+
+	// 2. 流量与有效期
+	limit := pkg.Traffic
+	if pkg.TransferGB > 0 {
+		limit = int64(pkg.TransferGB) * 1024 * 1024 * 1024
+	}
+	if limit > 0 {
+		user.TrafficLimit = limit
+	}
+	user.TrafficUsed = 0 // 续费/换套餐重置
 	if pkg.Duration > 0 {
 		expireAt := time.Now().AddDate(0, 0, pkg.Duration)
 		user.ExpireAt = &expireAt
 	}
+	if pkg.SpeedLimit > 0 {
+		user.SpeedLimit = pkg.SpeedLimit
+	}
+	if pkg.DeviceLimit > 0 {
+		user.DeviceLimit = pkg.DeviceLimit
+	}
+	user.Enable = true // 之前因超额停用的恢复
 
 	if err := tx.Save(user).Error; err != nil {
 		return err
 	}
 
-	// 分配节点（跳过已有分配，排除中转节点）
-	var nodes []model.Node
-	tx.Where("enable = ? AND (type IN (?, ?, ?) OR type IS NULL)", true, "standalone", "backend", "").Find(&nodes)
-
-	var existingNodeIDs []uint
-	tx.Model(&model.UserNode{}).Where("user_id = ?", user.ID).Pluck("node_id", &existingNodeIDs)
-	existingMap := make(map[uint]bool)
-	for _, nid := range existingNodeIDs {
-		existingMap[nid] = true
-	}
-
-	for _, node := range nodes {
-		if existingMap[node.ID] {
-			continue
-		}
-		userNode := model.UserNode{
-			UserID: user.ID,
-			NodeID: node.ID,
-			Enable: true,
-		}
-		if pkg.Duration > 0 {
-			expireAt := time.Now().AddDate(0, 0, pkg.Duration)
-			userNode.ExpireAt = &expireAt
-		}
-		if err := tx.Create(&userNode).Error; err != nil {
-			return err
-		}
-	}
+	// 3. bump 受影响节点 etag（agent 下次拉立即看到该用户）
+	var nodeIDs []uint
+	_ = tx.Raw(`
+		SELECT DISTINCT i.node_id
+		FROM package_inbounds pi
+		JOIN inbounds i ON i.id = pi.inbound_id
+		WHERE pi.package_id = ?
+	`, pkg.ID).Scan(&nodeIDs).Error
+	// 同时 bump 关联的 relay 节点
+	var relayNodeIDs []uint
+	_ = tx.Raw(`
+		SELECT DISTINCT r.relay_node_id
+		FROM relays r
+		JOIN package_inbounds pi ON pi.inbound_id = r.backend_inbound_id
+		WHERE pi.package_id = ?
+	`, pkg.ID).Scan(&relayNodeIDs).Error
+	_ = model.BumpEtags(append(nodeIDs, relayNodeIDs...))
 
 	return nil
 }

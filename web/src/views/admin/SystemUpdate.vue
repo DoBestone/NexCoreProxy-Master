@@ -1,13 +1,5 @@
 <template>
   <div class="system-update-page">
-    <div class="page-header">
-      <h1 class="page-title">
-        <CloudSyncOutlined class="title-icon" />
-        系统更新
-      </h1>
-      <p class="page-desc">在线检测更新、查看更新日志、配置更新代理</p>
-    </div>
-
     <!-- 版本信息栏 -->
     <div class="version-bar">
       <div class="version-info">
@@ -338,11 +330,7 @@ onMounted(() => { loadVersion(); loadProxyConfig(); checkUpdate() })
 </script>
 
 <style scoped>
-.system-update-page { max-width: 900px; animation: fadeIn 0.3s ease; }
-.page-header { margin-bottom: 20px; }
-.page-title { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; color: #1e293b; margin: 0; }
-.title-icon { color: #3b82f6; font-size: 24px; }
-.page-desc { color: #64748b; font-size: 14px; margin-top: 4px; }
+.system-update-page { max-width: 960px; animation: rise .4s ease-out both; }
 
 .version-bar { display: flex; align-items: center; gap: 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 20px; margin-bottom: 16px; }
 .version-info { display: flex; align-items: center; gap: 8px; }
@@ -384,5 +372,6 @@ onMounted(() => { loadVersion(); loadProxyConfig(); checkUpdate() })
 .update-cmd-box code { font-size: 13px; color: #1e293b; font-family: 'SF Mono', Monaco, monospace; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 768px) { .version-bar { flex-wrap: wrap; gap: 12px; } .changelog-summary { display: none; } }
 </style>

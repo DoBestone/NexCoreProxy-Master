@@ -1,24 +1,14 @@
 <template>
   <div class="nodes-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <h1 class="page-title">
-          <CloudServerOutlined class="title-icon" />
-          服务器管理
-        </h1>
-        <p class="page-desc">管理代理节点服务器，实时监控节点状态</p>
-      </div>
-      <div class="header-actions">
-        <a-button @click="refreshAllNodes" :loading="refreshing">
-          <ReloadOutlined /> 刷新状态
-        </a-button>
-        <a-button type="primary" @click="showAddModal">
-          <PlusOutlined /> 添加节点
-        </a-button>
-      </div>
+    <div class="page-toolbar">
+      <a-button @click="refreshAllNodes" :loading="refreshing">
+        <ReloadOutlined /> 刷新状态
+      </a-button>
+      <a-button type="primary" @click="showAddModal">
+        <PlusOutlined /> 添加节点
+      </a-button>
     </div>
-    
+
     <!-- 节点统计卡片 -->
     <div class="stats-grid">
       <div class="stat-card total">
@@ -598,28 +588,12 @@ onUnmounted(() => {
 <style scoped>
 .nodes-page { animation: fadeIn 0.3s ease; }
 
-.page-header {
+.page-toolbar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.page-title {
-  display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
+  margin-bottom: 14px;
 }
-
-.title-icon { color: #3b82f6; font-size: 24px; }
-.page-desc { color: #64748b; font-size: 14px; margin-top: 4px; }
-.header-actions { display: flex; gap: 12px; }
 
 /* 统计卡片 */
 .stats-grid {
@@ -650,9 +624,7 @@ onUnmounted(() => {
 
 @media (max-width: 576px) {
   .stats-grid { grid-template-columns: 1fr; }
-  .page-header { flex-direction: column; }
-  .header-actions { width: 100%; }
-  .header-actions .ant-btn { flex: 1; }
+  .page-toolbar .ant-btn { flex: 1; }
 }
 
 /* 节点卡片网格 */

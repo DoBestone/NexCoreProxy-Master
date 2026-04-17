@@ -1,0 +1,21 @@
+# /etc/ncp-agent/agent.yaml — 由 install-agent.sh 自动渲染，正常情况无需手动改
+master_url: https://master.example.com
+node_id: 1
+node_token: REPLACE_WITH_NODE_TOKEN
+
+# xray 进程
+xray_bin: /usr/local/bin/xray
+xray_config_path: /usr/local/etc/xray/config.json
+xray_service: xray
+xray_api_port: 10085
+
+# 缓存目录（断网容灾）
+cache_dir: /var/lib/ncp-agent
+
+# 周期（秒）。Master 下发的 settings 会动态覆盖这些值
+pull_interval: 60
+push_interval: 60
+
+log_level: info
+manage_firewall: true
+dry_run: false

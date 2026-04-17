@@ -9,7 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build-backend:
+  # === Master 后端（主控） ===
+  build-master:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,19 +24,50 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Build
+      - name: Build master
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w -X main.version=${{ github.ref_name }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${{ github.ref_name }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }} .
       - uses: actions/upload-artifact@v4
         with:
           name: nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }}
           path: nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }}
 
+  # === ncp-agent（节点代理，独立 Go module） ===
+  build-agent:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: Agent/go.mod
+      - name: Build ncp-agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        working-directory: Agent
+        run: |
+          go build -trimpath -ldflags="-s -w" \
+            -o ../ncp-agent-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/ncp-agent
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ncp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  # === Vue 前端 ===
   build-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -46,7 +78,7 @@ jobs:
       - name: Build Frontend
         run: |
           cd web
-          npm install
+          npm ci
           npm run build
       - name: Package Frontend
         run: tar -czf frontend-dist.tar.gz -C web/dist .
@@ -56,7 +88,7 @@ jobs:
           path: frontend-dist.tar.gz
 
   release:
-    needs: [build-backend, build-frontend]
+    needs: [build-master, build-agent, build-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,19 +98,29 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
+          # master 后端二进制
           for dir in artifacts/nexcore-master-*/; do
-            cp "$dir"/* release/ 2>/dev/null || true
+            cp "$dir"/* release/
           done
+          # ncp-agent 二进制
+          for dir in artifacts/ncp-agent-*/; do
+            cp "$dir"/* release/
+          done
+          # 前端
           cp artifacts/frontend-dist/frontend-dist.tar.gz release/
-          cp update.sh release/
-          chmod +x release/nexcore-master-* 2>/dev/null || true
-          chmod +x release/update.sh
+          # 脚本
+          [ -f update.sh ] && cp update.sh release/
+          [ -f Agent/install-agent.sh ] && cp Agent/install-agent.sh release/
+          chmod +x release/nexcore-master-* release/ncp-agent-* release/*.sh 2>/dev/null || true
           ls -la release/
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             release/nexcore-master-linux-amd64
             release/nexcore-master-linux-arm64
+            release/ncp-agent-linux-amd64
+            release/ncp-agent-linux-arm64
             release/frontend-dist.tar.gz
+            release/install-agent.sh
             release/update.sh
           generate_release_notes: true

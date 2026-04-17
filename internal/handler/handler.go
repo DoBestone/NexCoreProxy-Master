@@ -13,19 +13,33 @@ import (
 
 // Handler API处理器
 type Handler struct {
-	node  *service.NodeService
-	user  *service.UserService
-	email *service.EmailService
-	agent *service.AgentManager
+	node         *service.NodeService
+	user         *service.UserService
+	email        *service.EmailService
+	agent        *service.AgentManager
+	agentCfg     *service.AgentConfigService
+	agentPush    *service.AgentPushService
+	inbound      *service.InboundService
+	relayBinding *service.RelayBindingService
+	sub          *service.SubscriptionService
+	provisioner  *service.NodeProvisioner
+	cert         *service.CertService
 }
 
 // NewHandler 创建处理器
 func NewHandler(services *service.Services) *Handler {
 	return &Handler{
-		node:  services.Node,
-		user:  services.User,
-		email: services.Email,
-		agent: services.Agent,
+		node:         services.Node,
+		user:         services.User,
+		email:        services.Email,
+		agent:        services.Agent,
+		agentCfg:     services.AgentConfig,
+		agentPush:    services.AgentPush,
+		inbound:      services.Inbound,
+		relayBinding: services.RelayBinding,
+		sub:          services.Subscription,
+		provisioner:  services.Provisioner,
+		cert:         services.Cert,
 	}
 }
 
@@ -52,8 +66,18 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		// 订阅链接（公开，通过token验证）
 		api.GET("/sub/:token", h.GetSubscription)
 
-		// Agent WebSocket 连接
+		// 二进制下发（agent install-agent.sh 拉取，无鉴权）
+		api.GET("/binaries/:name", h.ServeBinary)
+
+		// Agent WebSocket 连接（旧版，待退役）
 		api.GET("/agent/ws", h.AgentWebSocket)
+
+		// === ncp-agent 协议 v1（自研 agent 拉配置 / 上报）===
+		v1agent := api.Group("/v1/server", h.agentAuthMiddleware())
+		{
+			v1agent.GET("/config", h.GetAgentConfig)
+			v1agent.POST("/push", h.PostAgentPush)
+		}
 
 		// x-ui 面板反向代理 (通过密钥访问)
 		panel := api.Group("/panel/:agentKey")
@@ -92,6 +116,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.POST("/nodes/:id/test", h.TestNode)
 				admin.POST("/nodes/:id/sync", h.SyncNode)
 				admin.POST("/nodes/:id/install", h.InstallNode)
+				admin.POST("/nodes/:id/install-agent", h.InstallNodeAgent) // 自研 agent 部署
 				admin.POST("/nodes/:id/restart", h.RestartNodeXray)
 				admin.POST("/nodes/:id/reset-credentials", h.ResetNodeCredentials)
 				admin.POST("/nodes/:id/check-update", h.CheckNodeUpdate)
@@ -105,26 +130,44 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 				admin.GET("/nodes/:id/api-token", h.GetNodeAPIToken)
 				admin.POST("/nodes/:id/api-token", h.GenNodeAPIToken)
 
-				// 中转规则管理
+				// 中转规则管理（旧版，待退役）
 				admin.GET("/relay-rules", h.GetRelayRules)
 				admin.POST("/relay-rules", h.CreateRelayRule)
 				admin.DELETE("/relay-rules/:id", h.DeleteRelayRule)
 				admin.POST("/relay-rules/:id/sync", h.SyncRelayRule)
+
+				// === 自研 agent 架构：Inbound + RelayBinding 管理 ===
+				admin.GET("/inbounds", h.ListInbounds)
+				admin.POST("/inbounds", h.CreateInbound)
+				admin.PUT("/inbounds/:id", h.UpdateInbound)
+				admin.DELETE("/inbounds/:id", h.DeleteInbound)
+				admin.POST("/inbounds/:id/toggle", h.ToggleInbound)
+				admin.POST("/nodes/:id/provision", h.ProvisionNode) // 一键写入默认入站集
+
+				// === ACME 证书管理 ===
+				admin.GET("/certs", h.ListCerts)
+				admin.POST("/certs/issue", h.IssueCert)
+				admin.DELETE("/certs/:id", h.DeleteCert)
+				admin.GET("/acme/settings", h.GetAcmeSettings)
+				admin.PUT("/acme/settings", h.UpdateAcmeSettings)
+
+				admin.GET("/relay-bindings", h.ListRelayBindings)
+				admin.POST("/relay-bindings", h.CreateRelayBinding)
+				admin.PUT("/relay-bindings/:id", h.UpdateRelayBinding)
+				admin.DELETE("/relay-bindings/:id", h.DeleteRelayBinding)
+				admin.POST("/relay-bindings/:id/resync", h.ResyncRelayBinding)
 
 				// 套餐管理
 				admin.GET("/admin/packages", h.GetAllPackages)
 				admin.POST("/packages", h.AddPackage)
 				admin.PUT("/packages/:id", h.UpdatePackage)
 				admin.DELETE("/packages/:id", h.DeletePackage)
+				admin.GET("/packages/:id/inbounds", h.GetPackageInbounds)
+				admin.PUT("/packages/:id/inbounds", h.SetPackageInbounds)
 
 				// 订单管理
 				admin.GET("/orders", h.GetAllOrders)
 				admin.PUT("/orders/:id/status", h.UpdateOrderStatus)
-
-				// 工单管理
-				admin.GET("/tickets", h.GetAllTickets)
-				admin.POST("/tickets/:id/reply", h.ReplyTicket)
-				admin.PUT("/tickets/:id/close", h.CloseTicket)
 
 				// 入站模板
 				admin.GET("/templates", h.GetTemplates)
@@ -159,17 +202,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 			// 我的节点
 			auth.GET("/my/nodes", h.GetMyNodes)
 			auth.GET("/my/traffic", h.GetMyTraffic)
+			auth.GET("/my/traffic/trend", h.GetMyTrafficTrend)
 			auth.GET("/my/subscribe", h.GetMySubscribe)
+			auth.POST("/my/subscribe/reset", h.ResetMySubscribe)
 
 			// 订单
 			auth.GET("/my/orders", h.GetMyOrders)
 			auth.POST("/orders", h.CreateOrder)
-
-			// 工单
-			auth.GET("/my/tickets", h.GetMyTickets)
-			auth.POST("/tickets", h.CreateTicket)
-			auth.GET("/tickets/:id", h.GetTicketDetail)
-			auth.POST("/my/tickets/:id/reply", h.UserReplyTicket)
 		}
 	}
 }

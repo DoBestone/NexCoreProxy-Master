@@ -1,92 +1,165 @@
 <template>
   <div class="my-nodes-page">
-    <!-- 订阅链接卡片 -->
-    <div class="subscribe-card">
-      <div class="subscribe-header">
-        <div class="subscribe-icon">
-          <LinkOutlined />
-        </div>
-        <div class="subscribe-info">
-          <h3>订阅链接</h3>
-          <p>导入到客户端即可使用所有节点</p>
+    <!-- 订阅卡 -->
+    <section class="sub-card">
+      <div class="sub-accent"></div>
+      <div class="sub-head">
+        <div class="sub-icon"><LinkOutlined /></div>
+        <div class="sub-title-wrap">
+          <h3 class="sub-title">订阅链接</h3>
+          <p class="sub-desc">导入到客户端即可使用所有可用节点</p>
         </div>
       </div>
-      
-      <div class="subscribe-url">
-        <code>{{ subscribeUrl || '加载中...' }}</code>
-        <button class="copy-btn" @click="copySubscribe">
-          <CopyOutlined />
-        </button>
+
+      <div class="sub-rows">
+        <div class="sub-row">
+          <div class="sub-row-label">
+            <span class="sub-tag">通用</span>
+            <span>V2Ray / Xray / Shadowrocket</span>
+          </div>
+          <div class="sub-url">
+            <code class="mono">{{ subscribeUrl || '— 加载中 —' }}</code>
+            <button class="sub-copy" :disabled="!subscribeUrl" @click="copy(subscribeUrl, '通用订阅')">
+              <CopyOutlined />
+            </button>
+          </div>
+        </div>
+
+        <div class="sub-row">
+          <div class="sub-row-label">
+            <span class="sub-tag sub-tag-alt">Clash</span>
+            <span>Clash / ClashX / Stash</span>
+          </div>
+          <div class="sub-url">
+            <code class="mono">{{ clashUrl || '— 加载中 —' }}</code>
+            <button class="sub-copy" :disabled="!clashUrl" @click="copy(clashUrl, 'Clash 订阅')">
+              <CopyOutlined />
+            </button>
+          </div>
+        </div>
       </div>
-      
-      <div class="subscribe-actions">
-        <a-button type="primary" @click="copySubscribe">
-          <CopyOutlined /> 复制订阅链接
+
+      <div class="sub-actions">
+        <a-button type="primary" @click="copy(subscribeUrl, '通用订阅')">
+          <CopyOutlined /> 复制通用订阅
         </a-button>
-        <a-button @click="refreshSubscribe" :loading="refreshing">
+        <a-button @click="copy(clashUrl, 'Clash 订阅')">
+          <CopyOutlined /> 复制 Clash
+        </a-button>
+        <a-button :loading="refreshing" @click="refreshSubscribe">
           <ReloadOutlined /> 刷新订阅
         </a-button>
       </div>
-    </div>
-    
+    </section>
+
     <!-- 节点列表 -->
-    <div class="nodes-section">
-      <div class="section-header">
-        <h2>我的节点</h2>
-        <span class="node-count">{{ nodes.length }} 个节点</span>
-      </div>
-      
-      <!-- 空状态 -->
-      <div v-if="!loading && nodes.length === 0" class="empty-state">
-        <CloudServerOutlined class="empty-icon" />
-        <p>暂无分配节点</p>
-        <a-button type="primary" @click="$router.push('/user/buy')">
-          去购买套餐
-        </a-button>
-      </div>
-      
-      <!-- 节点网格 -->
-      <div v-else class="nodes-grid">
-        <div v-for="node in nodes" :key="node.id" class="node-card">
-          <div class="node-header">
-            <div class="node-name">{{ node.name }}</div>
-            <span :class="['status-badge', node.status]">
-              {{ node.status === 'online' ? '在线' : '离线' }}
-            </span>
-          </div>
-          
-          <div class="node-details">
-            <div class="detail-row">
-              <span class="label">协议</span>
-              <span class="value protocol">{{ node.protocol?.toUpperCase() }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">地址</span>
-              <span class="value">{{ node.ip }}</span>
-            </div>
+    <section class="nodes-section">
+      <div class="section-head">
+        <div class="section-head-left">
+          <h2 class="section-title">我的节点</h2>
+          <span class="section-count">
+            <span class="dot dot-ok"></span>
+            {{ onlineCount }} 在线 · 共 {{ nodes.length }} 节点
+          </span>
+        </div>
+        <div class="section-head-right">
+          <div class="seg">
+            <button
+              v-for="opt in filterOptions"
+              :key="opt.key"
+              class="seg-btn"
+              :class="{ 'is-active': filter === opt.key }"
+              @click="filter = opt.key"
+            >{{ opt.label }}</button>
           </div>
         </div>
       </div>
-    </div>
+
+      <div v-if="loading" class="state state-loading">加载节点中…</div>
+
+      <div v-else-if="nodes.length === 0" class="state state-empty">
+        <CloudServerOutlined class="state-icon" />
+        <p class="state-title">暂无分配节点</p>
+        <p class="state-sub">购买套餐后会自动分配可用节点</p>
+        <a-button type="primary" @click="$router.push('/user/buy')">
+          <ShoppingCartOutlined /> 去购买套餐
+        </a-button>
+      </div>
+
+      <div v-else-if="filteredNodes.length === 0" class="state state-empty">
+        <p class="state-title">当前筛选下无节点</p>
+      </div>
+
+      <div v-else class="nodes-grid">
+        <article
+          v-for="(node, idx) in filteredNodes"
+          :key="node.id"
+          class="node-card"
+          :style="{ animationDelay: (idx * 40) + 'ms' }"
+        >
+          <header class="node-head">
+            <div class="node-name-wrap">
+              <span class="node-name">{{ node.name }}</span>
+              <span class="node-region mono" v-if="node.region">{{ node.region }}</span>
+            </div>
+            <span :class="['node-status', node.status]">
+              <span class="dot"></span>
+              {{ node.status === 'online' ? '在线' : '离线' }}
+            </span>
+          </header>
+
+          <dl class="node-fields">
+            <div class="field">
+              <dt>协议</dt>
+              <dd><span class="pill-proto">{{ (node.protocol || '—').toUpperCase() }}</span></dd>
+            </div>
+            <div class="field">
+              <dt>地址</dt>
+              <dd class="mono">{{ node.ip || '—' }}</dd>
+            </div>
+          </dl>
+        </article>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { CloudServerOutlined, CopyOutlined, ReloadOutlined, LinkOutlined } from '@ant-design/icons-vue'
+import {
+  CloudServerOutlined,
+  CopyOutlined,
+  ReloadOutlined,
+  LinkOutlined,
+  ShoppingCartOutlined
+} from '@ant-design/icons-vue'
 import { getMyNodes, getMySubscribe } from '@/api'
 
 const nodes = ref([])
 const subscribeUrl = ref('')
+const clashUrl = ref('')
 const loading = ref(false)
 const refreshing = ref(false)
+const filter = ref('all')
 
-const copySubscribe = () => {
-  if (subscribeUrl.value) {
-    navigator.clipboard.writeText(subscribeUrl.value)
-    message.success('订阅链接已复制')
-  }
+const filterOptions = [
+  { key: 'all',     label: '全部' },
+  { key: 'online',  label: '在线' },
+  { key: 'offline', label: '离线' }
+]
+
+const onlineCount = computed(() => nodes.value.filter(n => n.status === 'online').length)
+
+const filteredNodes = computed(() => {
+  if (filter.value === 'all') return nodes.value
+  return nodes.value.filter(n => n.status === filter.value)
+})
+
+const copy = (text, label) => {
+  if (!text) return
+  navigator.clipboard.writeText(text)
+  message.success(`${label}已复制`)
 }
 
 const refreshSubscribe = async () => {
@@ -94,7 +167,8 @@ const refreshSubscribe = async () => {
   try {
     const res = await getMySubscribe()
     if (res.success && res.obj) {
-      subscribeUrl.value = res.obj.url
+      subscribeUrl.value = res.obj.url || ''
+      clashUrl.value = res.obj.clashUrl || (res.obj.url ? res.obj.url + '?flag=clash' : '')
       message.success('订阅已刷新')
     }
   } catch (e) {
@@ -124,252 +198,374 @@ onMounted(() => {
 
 <style scoped>
 .my-nodes-page {
-  animation: fadeIn 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-/* 订阅卡片 */
-.subscribe-card {
-  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-  color: white;
+/* ============================================================
+   订阅卡
+   ============================================================ */
+.sub-card {
+  position: relative;
+  background: linear-gradient(160deg, #f0f6ff 0%, #ffffff 65%);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 18px;
+  overflow: hidden;
+  animation: rise .4s ease-out both;
 }
 
-.subscribe-header {
+.sub-accent {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
+}
+
+.sub-head {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   margin-bottom: 20px;
 }
 
-.subscribe-icon {
-  width: 48px;
-  height: 48px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
+.sub-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-}
-
-.subscribe-info h3 {
-  margin: 0;
   font-size: 18px;
-  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(59,130,246,.24);
+  flex-shrink: 0;
 }
 
-.subscribe-info p {
+.sub-title {
+  font-family: var(--font-display);
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.sub-desc {
   margin: 4px 0 0;
-  opacity: 0.85;
-  font-size: 13px;
+  color: #64748b;
+  font-size: 12.5px;
+  line-height: 1.4;
 }
 
-.subscribe-url {
+.sub-rows {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
-  padding: 12px 16px;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
-.subscribe-url code {
-  flex: 1;
-  font-size: 13px;
-  word-break: break-all;
-  color: white;
-  background: transparent;
+.sub-row-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: #64748b;
+  margin-bottom: 6px;
 }
 
-.subscribe-url .copy-btn {
-  width: 36px;
-  height: 36px;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
+.sub-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.sub-tag-alt {
+  background: #f0fdf4;
+  color: #047857;
+}
+
+.sub-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 10px 10px 14px;
+  transition: border-color .15s;
+}
+
+.sub-url:hover { border-color: #cbd5e1; }
+
+.sub-url code {
+  flex: 1;
+  font-size: 12.5px;
+  color: #1e293b;
+  background: transparent;
+  word-break: break-all;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub-copy {
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
-  color: white;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s, background-color .15s;
 }
 
-.subscribe-url .copy-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+.sub-copy:hover:not(:disabled) {
+  color: #2563eb;
+  border-color: #dbeafe;
+  background: #fff;
 }
 
-.subscribe-actions {
+.sub-copy:disabled { opacity: .5; cursor: not-allowed; }
+
+.sub-actions {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.subscribe-actions .ant-btn {
-  border-radius: 10px;
-  border: none;
-}
-
-.subscribe-actions .ant-btn-primary {
-  background: white;
-  color: #3b82f6;
-  font-weight: 600;
-}
-
-.subscribe-actions .ant-btn-primary:hover {
-  background: #eff6ff;
-}
-
-.subscribe-actions .ant-btn:not(.ant-btn-primary) {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-/* 节点区域 */
+/* ============================================================
+   节点区
+   ============================================================ */
 .nodes-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
+  background: #fff;
+  border: 1px solid #e6ecf4;
+  border-radius: 12px;
+  padding: 14px 16px 18px;
+  animation: rise .4s ease-out both;
+  animation-delay: 80ms;
 }
 
-.section-header {
+.section-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 18px;
 }
 
-.section-header h2 {
-  margin: 0;
-  font-size: 18px;
+.section-head-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: 15px;
   font-weight: 600;
-  color: #1e293b;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.node-count {
-  font-size: 13px;
+.section-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
   color: #64748b;
+}
+
+/* 段控件 */
+.seg {
+  display: inline-flex;
+  padding: 3px;
   background: #f1f5f9;
-  padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 9px;
 }
 
-/* 空状态 */
-.empty-state {
-  text-align: center;
-  padding: 48px 24px;
-}
-
-.empty-icon {
-  font-size: 48px;
-  color: #cbd5e1;
-  margin-bottom: 16px;
-}
-
-.empty-state p {
+.seg-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
   color: #64748b;
-  margin-bottom: 20px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+
+.seg-btn:hover { color: #1e293b; }
+
+.seg-btn.is-active {
+  background: #fff;
+  color: #2563eb;
+  box-shadow: 0 1px 2px rgba(15,23,42,.08);
+}
+
+/* 状态区 */
+.state {
+  padding: 56px 20px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+.state-loading { font-size: 13px; }
+
+.state-icon {
+  font-size: 42px;
+  color: #cbd5e1;
+  margin-bottom: 14px;
+}
+
+.state-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.state-sub {
+  margin: 0 0 20px;
+  font-size: 12.5px;
+  color: #94a3b8;
 }
 
 /* 节点网格 */
 .nodes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
 }
 
 .node-card {
-  background: #f8fafc;
+  background: #fff;
+  border: 1px solid #e6ecf4;
   border-radius: 12px;
-  padding: 20px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.2s ease;
+  padding: 16px;
+  transition: border-color .15s, box-shadow .15s;
+  animation: rise .35s ease-out both;
 }
 
 .node-card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+  border-color: #c7d8f2;
+  box-shadow: 0 4px 14px rgba(59,130,246,.08);
 }
 
-.node-header {
+.node-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.node-name-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .node-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
+  color: #0f172a;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
+.node-region {
+  font-size: 11px;
+  color: #94a3b8;
 }
 
-.status-badge.online {
-  background: #f0fdf4;
-  color: #16a34a;
+.node-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
-.status-badge.offline {
-  background: #fef2f2;
-  color: #dc2626;
+.node-status.online  { background: #ecfdf5; color: #047857; }
+.node-status.offline { background: #fef2f2; color: #b91c1c; }
+
+.node-status .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor;
 }
 
-.node-details {
+.dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.dot-ok { background: #16a34a; }
+
+.node-fields {
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 6px;
 }
 
-.detail-row {
+.field {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  align-items: center;
+  font-size: 12.5px;
 }
 
-.detail-row .label {
-  color: #64748b;
+.field dt { color: #94a3b8; margin: 0; }
+.field dd { margin: 0; color: #1e293b; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pill-proto {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 5px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
 }
 
-.detail-row .value {
-  color: #1e293b;
-  font-weight: 500;
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width: 768px) {
+  .section-head { flex-direction: column; align-items: flex-start; }
 }
 
-.detail-row .value.protocol {
-  color: #3b82f6;
-}
-
-/* 响应式 */
 @media (max-width: 576px) {
-  .subscribe-card {
-    padding: 20px;
-  }
-  
-  .subscribe-actions {
-    flex-direction: column;
-  }
-  
-  .subscribe-actions .ant-btn {
-    width: 100%;
-  }
-  
-  .nodes-grid {
-    grid-template-columns: 1fr;
-  }
+  .sub-card { padding: 20px 16px; }
+  .sub-head { gap: 10px; }
+  .sub-actions .ant-btn { flex: 1; }
+  .nodes-grid { grid-template-columns: 1fr; }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
 }
 </style>

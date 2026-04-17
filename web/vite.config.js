@@ -19,6 +19,21 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist'
-  }
+    outDir: 'dist',
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vue 生态独立
+          'vue-vendor': ['vue', 'vue-router'],
+          // AntD 主体（最大头）
+          'antd': ['ant-design-vue'],
+          // AntD 图标 (按需收敛)
+          'antd-icons': ['@ant-design/icons-vue'],
+          // ECharts 重型
+          'echarts': ['echarts'],
+        },
+      },
+    },
+  },
 })

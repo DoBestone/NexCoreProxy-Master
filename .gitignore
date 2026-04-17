@@ -35,3 +35,6 @@ temp/
 *.tmp
 *.bak
 nexcore-master
+
+# 构建产物（CI 输出，不进版本库）
+binaries/

@@ -1,0 +1,16 @@
+[Unit]
+Description=NexCore ncp-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ncp-agent --config /etc/ncp-agent/agent.yaml
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=1048576
+StandardOutput=append:/var/log/ncp-agent/agent.log
+StandardError=append:/var/log/ncp-agent/agent.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,20 +1,12 @@
 <template>
   <div class="templates-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <h1 class="page-title">
-          <FileTextOutlined class="title-icon" />
-          服务模板
-        </h1>
-        <p class="page-desc">管理入站模板，快速部署节点配置</p>
-      </div>
-      <a-button type="primary" size="large" @click="showAddModal">
+    <div class="page-toolbar">
+      <a-button type="primary" @click="showAddModal">
         <template #icon><PlusOutlined /></template>
         添加模板
       </a-button>
     </div>
-    
+
     <!-- 模板列表 -->
     <div class="templates-grid">
       <div 
@@ -288,33 +280,10 @@ onMounted(() => {
   animation: fadeIn 0.3s ease;
 }
 
-.page-header {
+.page-toolbar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 16px;
-}
-
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-}
-
-.title-icon {
-  color: #3b82f6;
-  font-size: 24px;
-}
-
-.page-desc {
-  color: #64748b;
-  font-size: 14px;
-  margin-top: 4px;
+  justify-content: flex-end;
+  margin-bottom: 14px;
 }
 
 /* 模板网格 */
@@ -480,14 +449,8 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .templates-grid {
-    grid-template-columns: 1fr;
-  }
+  .page-toolbar .ant-btn { width: 100%; }
+  .templates-grid { grid-template-columns: 1fr; }
 }
 
 @keyframes fadeIn {

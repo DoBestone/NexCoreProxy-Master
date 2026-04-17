@@ -1,21 +1,12 @@
 <template>
   <div class="users-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <h1 class="page-title">
-          <TeamOutlined class="title-icon" />
-          用户管理
-        </h1>
-        <p class="page-desc">管理系统用户，设置权限和余额</p>
-      </div>
-      <a-button type="primary" size="large" @click="showAddModal">
+    <div class="page-toolbar">
+      <a-button type="primary" @click="showAddModal">
         <template #icon><PlusOutlined /></template>
         添加用户
       </a-button>
     </div>
-    
-    <!-- 用户列表卡片 -->
+
     <a-card class="users-card">
       <a-table 
         :columns="columns" 
@@ -325,33 +316,10 @@ onMounted(() => {
   animation: fadeIn 0.3s ease;
 }
 
-.page-header {
+.page-toolbar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 16px;
-}
-
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-}
-
-.title-icon {
-  color: #3b82f6;
-  font-size: 24px;
-}
-
-.page-desc {
-  color: #64748b;
-  font-size: 14px;
-  margin-top: 4px;
+  justify-content: flex-end;
+  margin-bottom: 14px;
 }
 
 .users-card {
@@ -497,14 +465,7 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .page-header .ant-btn {
-    width: 100%;
-  }
+  .page-toolbar .ant-btn { width: 100%; }
 }
 
 @keyframes fadeIn {

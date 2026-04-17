@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	version   = "1.3.0"
+	version   = "2.0.0"
 	buildTime = "unknown"
 )
 
@@ -28,6 +28,8 @@ func main() {
 	var showVersion bool
 	var port int
 	var dbHost, dbPort, dbUser, dbPass, dbName string
+	var masterURL, agentBinaryURL, xrayVersion, agentTargetVer string
+	var dropLegacy bool
 
 	flag.BoolVar(&showVersion, "v", false, "show version")
 	flag.IntVar(&port, "port", 9310, "web server port")
@@ -35,7 +37,12 @@ func main() {
 	flag.StringVar(&dbPort, "db-port", "3306", "database port")
 	flag.StringVar(&dbUser, "db-user", "root", "database user")
 	flag.StringVar(&dbPass, "db-pass", "", "database password")
-	flag.StringVar(&dbName, "db-name", "nexcore", "database name")
+	flag.StringVar(&dbName, "db-name", "nexcore_proxy", "database name")
+	flag.StringVar(&masterURL, "master-url", "", "Master 公网地址，agent 用它回连（必填，用于一键部署）")
+	flag.StringVar(&agentBinaryURL, "agent-binary-url", "", "ncp-agent 二进制下载 URL，含 ${ARCH} 占位")
+	flag.StringVar(&xrayVersion, "xray-version", "1.8.24", "目标 xray-core 版本")
+	flag.StringVar(&agentTargetVer, "agent-version", "0.1.0", "目标 ncp-agent 版本")
+	flag.BoolVar(&dropLegacy, "drop-legacy", false, "DROP legacy tables (user_nodes/inbound_templates/traffic_logs/relay_rules) and exit")
 	flag.Parse()
 
 	if showVersion {
@@ -63,12 +70,30 @@ func main() {
 	}
 	log.Println("Database migrated")
 
+	// 一次性 DROP 老表
+	if dropLegacy {
+		if err := model.DropLegacyTables(); err != nil {
+			log.Fatal("DROP legacy 失败:", err)
+		}
+		log.Println("Legacy tables dropped")
+		return
+	}
+
+	// 注入运行时配置（agent 部署/升级流程要读）
+	service.SetRuntimeConfig(masterURL, agentBinaryURL, xrayVersion, agentTargetVer)
+
 	// 初始化服务
 	services := service.NewServices()
+	services.Backup.AttachDBConfig(dbHost, dbPort, dbUser, dbPass, dbName)
 
 	// 初始化管理员账户
 	if err := services.User.InitAdmin(); err != nil {
 		log.Println("初始化管理员账户:", err)
+	}
+
+	// 为历史用户补齐持久订阅令牌（幂等）
+	if err := services.User.BackfillSubscribeTokens(); err != nil {
+		log.Println("补齐订阅令牌:", err)
 	}
 
 	// 启动定时任务

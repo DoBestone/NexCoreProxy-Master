@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/driver/mysql"
@@ -36,22 +37,47 @@ func GetDB() *gorm.DB {
 }
 
 // AutoMigrate 自动迁移表结构
+//
+// 只迁移自研 agent 架构使用的表。旧表（UserNode / InboundTemplate / TrafficLog / RelayRule）
+// 已从该列表移除：fresh install 不再创建；存量表用 DropLegacyTables 主动 DROP。
+//
+// 旧表的 struct 仍保留在 model 包内（供个别 legacy handler 编译过），但运行时不依赖。
 func AutoMigrate() error {
 	return db.AutoMigrate(
+		// 业务核心
 		&User{},
 		&Node{},
-		&UserNode{},
 		&Package{},
 		&Order{},
-		&Ticket{},
-		&TicketReply{},
-		&InboundTemplate{},
-		&TrafficLog{},
 		&Announcement{},
 		&EmailConfig{},
 		&NexCoreConfig{},
-		&RelayRule{},
+		// 自研 agent 架构表
+		&Inbound{},
+		&PackageInbound{},
+		&Relay{},
+		&RelayBinding{},
+		&NodeConfigVersion{},
+		&UserTraffic{},
+		&NodeOnlineIP{},
+		&NodeEvent{},
+		&AcmeAccount{},
+		&Certificate{},
 	)
+}
+
+// DropLegacyTables 一次性 DROP 旧表（user_nodes / inbound_templates / traffic_logs / relay_rules）
+//
+// 由 main.go 的 --drop-legacy 命令调用。运行前自动备份建议手动做。
+func DropLegacyTables() error {
+	for _, t := range []string{"user_nodes", "inbound_templates", "traffic_logs", "relay_rules"} {
+		if db.Migrator().HasTable(t) {
+			if err := db.Migrator().DropTable(t); err != nil {
+				return fmt.Errorf("drop %s: %w", t, err)
+			}
+		}
+	}
+	return nil
 }
 
 // User 用户模型
@@ -69,8 +95,19 @@ type User struct {
 	Remark       string     `json:"remark" gorm:"size:255"`
 	InviteCode   string     `json:"inviteCode" gorm:"size:20;uniqueIndex"` // 邀请码
 	InvitedBy    uint       `json:"invitedBy"`                             // 邀请人ID
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	// SubscribeToken 持久化订阅令牌，粘贴到客户端后长期有效；通过"重置"接口主动换发
+	SubscribeToken string `json:"-" gorm:"size:64;uniqueIndex"`
+
+	// per-user 协议凭据（自研 agent 架构核心：Master 是唯一权威）
+	UUID           string `json:"uuid" gorm:"size:36;uniqueIndex"`     // VLESS/VMess
+	TrojanPassword string `json:"-" gorm:"size:64"`                    // Trojan
+	SS2022Password string `json:"-" gorm:"size:64"`                    // SS-2022 user PSK (base64)
+	SpeedLimit     int    `json:"speedLimit" gorm:"default:0"`         // Mbps，0=不限
+	DeviceLimit    int    `json:"deviceLimit" gorm:"default:0"`        // 在线设备数，0=不限
+	ResetDay       int    `json:"resetDay" gorm:"default:1"`           // 月流量重置日 1-28
+
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Announcement 公告模型
@@ -112,6 +149,10 @@ type Node struct {
 	APIPort       int        `json:"apiPort" gorm:"default:54322"`        // ncp-api 端口
 	MasterURL     string     `json:"masterUrl" gorm:"size:255"`           // Master地址
 	Type          string     `json:"type" gorm:"size:20;default:'standalone';index"` // standalone, relay, backend
+	Role          string     `json:"role" gorm:"size:20;default:'backend';index"`    // backend | relay (新版语义，Type 保留兼容)
+	Region        string     `json:"region" gorm:"size:50"`                          // 自动绑定/订阅分组用 (cn/hk/us/...)
+	Installed     bool       `json:"installed" gorm:"default:false"`                 // ncp-agent 是否已成功部署
+	AgentVersion  string     `json:"agentVersion" gorm:"size:30"`                    // ncp-agent 版本（push 时回报）
 	Enable        bool       `json:"enable" gorm:"default:true"`
 	Remark        string     `json:"remark" gorm:"size:255"`
 	Status        string     `json:"status" gorm:"size:20;default:'unknown'"`
@@ -144,13 +185,19 @@ type UserNode struct {
 
 // Package 套餐模型
 type Package struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Name      string    `json:"name" gorm:"size:100;not null"`
-	Protocol  string    `json:"protocol" gorm:"size:20"` // vmess, vless, trojan, all
-	Traffic   int64     `json:"traffic"`                 // 流量(字节), 0=无限
-	Duration  int       `json:"duration"`                // 时长(天), 0=永久
-	Price     float64   `json:"price"`                   // 价格
-	Nodes     int       `json:"nodes"`                   // 可用节点数, 0=无限
+	ID       uint    `json:"id" gorm:"primaryKey"`
+	Name     string  `json:"name" gorm:"size:100;not null"`
+	Protocol string  `json:"protocol" gorm:"size:20"` // 兼容字段，新版按 PackageInbound 关联
+	Traffic  int64   `json:"traffic"`                 // 流量(字节), 0=无限（与 TransferGB 二选一）
+	Duration int     `json:"duration"`                // 时长(天), 0=永久
+	Price    float64 `json:"price"`
+	Nodes    int     `json:"nodes"` // 兼容字段
+
+	// per-package 限额（新增）
+	TransferGB  int `json:"transferGb" gorm:"default:0"`  // 月流量 GB，0=不限（覆盖 Traffic）
+	DeviceLimit int `json:"deviceLimit" gorm:"default:0"` // 在线设备数限制
+	SpeedLimit  int `json:"speedLimit" gorm:"default:0"`  // 限速 Mbps
+
 	Remark    string    `json:"remark" gorm:"size:255"`
 	Sort      int       `json:"sort" gorm:"default:0"`
 	Enable    bool      `json:"enable" gorm:"default:true"`
@@ -172,28 +219,6 @@ type Order struct {
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	User        User       `json:"user" gorm:"foreignKey:UserID"`
-}
-
-// Ticket 工单模型
-type Ticket struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	UserID    uint      `json:"userId" gorm:"index"`
-	Subject   string    `json:"subject" gorm:"size:200"`
-	Content   string    `json:"content" gorm:"type:text"`
-	Status    string    `json:"status" gorm:"size:20;default:'open';index"` // open, closed
-	Priority  int       `json:"priority" gorm:"default:0"`                  // 0=普通, 1=紧急
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	User      User      `json:"user" gorm:"foreignKey:UserID"`
-}
-
-// TicketReply 工单回复
-type TicketReply struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	TicketID  uint      `json:"ticketId" gorm:"index"`
-	UserID    uint      `json:"userId"` // 0 = 管理员回复
-	Content   string    `json:"content" gorm:"type:text"`
-	CreatedAt time.Time `json:"createdAt"`
 }
 
 // InboundTemplate 入站模板

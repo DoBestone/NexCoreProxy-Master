@@ -23,17 +23,12 @@ export const getTurnstileConfig = () => request.get('/turnstile-config')
 // 我的节点
 export const getMyNodes = () => request.get('/my/nodes')
 export const getMyTraffic = () => request.get('/my/traffic')
+export const getMyTrafficTrend = (days = 7) => request.get('/my/traffic/trend', { params: { days } })
 export const getMySubscribe = () => request.get('/my/subscribe')
 
 // 我的订单
 export const getMyOrders = () => request.get('/my/orders')
 export const createOrder = (data) => request.post('/orders', data)
-
-// 我的工单
-export const getMyTickets = () => request.get('/my/tickets')
-export const createTicket = (data) => request.post('/tickets', data)
-export const getTicketDetail = (id) => request.get(`/tickets/${id}`)
-export const replyMyTicket = (id, content) => request.post(`/my/tickets/${id}/reply`, { content })
 
 // ========== 管理员接口 ==========
 
@@ -79,11 +74,6 @@ export const deletePackage = (id) => request.delete(`/packages/${id}`)
 export const getAllOrders = () => request.get('/orders')
 export const updateOrderStatus = (id, status) => request.put(`/orders/${id}/status`, { status })
 
-// 工单管理
-export const getAllTickets = () => request.get('/tickets')
-export const replyTicket = (id, content) => request.post(`/tickets/${id}/reply`, { content })
-export const closeTicket = (id) => request.put(`/tickets/${id}/close`)
-
 // 入站模板
 export const getTemplates = () => request.get('/templates')
 export const addTemplate = (data) => request.post('/templates', data)
@@ -102,6 +92,35 @@ export const testEmail = (email) => request.post('/admin/email-test', { email })
 
 // 统计
 export const getStatsOverview = () => request.get('/stats/overview')
+
+// ========== 自研 agent 架构（v1） ==========
+
+// Inbound 管理
+export const listInbounds = (nodeId) => request.get('/inbounds', { params: nodeId ? { nodeId } : {} })
+export const createInbound = (data) => request.post('/inbounds', data)
+export const updateInbound = (id, data) => request.put(`/inbounds/${id}`, data)
+export const deleteInbound = (id) => request.delete(`/inbounds/${id}`)
+export const toggleInbound = (id, enable) => request.post(`/inbounds/${id}/toggle`, { enable })
+export const provisionNode = (id, set = 'standard') => request.post(`/nodes/${id}/provision`, { set })
+export const installNodeAgent = (id) => request.post(`/nodes/${id}/install-agent`)
+
+// Package ↔ Inbound 关联
+export const getPackageInbounds = (id) => request.get(`/packages/${id}/inbounds`)
+export const setPackageInbounds = (id, inboundIds) => request.put(`/packages/${id}/inbounds`, { inboundIds })
+
+// RelayBinding 管理
+export const listRelayBindings = () => request.get('/relay-bindings')
+export const createRelayBinding = (data) => request.post('/relay-bindings', data)
+export const updateRelayBinding = (id, data) => request.put(`/relay-bindings/${id}`, data)
+export const deleteRelayBinding = (id) => request.delete(`/relay-bindings/${id}`)
+export const resyncRelayBinding = (id) => request.post(`/relay-bindings/${id}/resync`)
+
+// ACME 证书
+export const listCerts = () => request.get('/certs')
+export const issueCert = (domain) => request.post('/certs/issue', { domain })
+export const deleteCert = (id) => request.delete(`/certs/${id}`)
+export const getAcmeSettings = () => request.get('/acme/settings')
+export const updateAcmeSettings = (data) => request.put('/acme/settings', data)
 
 // 系统更新
 export const systemUpdate = {

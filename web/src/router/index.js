@@ -17,12 +17,12 @@ const routes = [
     component: () => import('@/views/user/UserLogin.vue'),
     meta: { title: '用户登录', requiresAuth: false, layout: 'user' }
   },
-  // 注册页面
+  // 用户端注册
   {
-    path: '/register',
-    name: 'Register',
-    component: () => import('@/views/Register.vue'),
-    meta: { title: '注册', requiresAuth: false, layout: 'user' }
+    path: '/user/register',
+    name: 'UserRegister',
+    component: () => import('@/views/user/UserRegister.vue'),
+    meta: { title: '注册', requiresAuth: false }
   },
   // 管理端路由
   {
@@ -44,10 +44,28 @@ const routes = [
         meta: { title: '节点管理', icon: 'CloudServerOutlined' }
       },
       {
+        path: 'inbounds',
+        name: 'Inbounds',
+        component: () => import('@/views/admin/Inbounds.vue'),
+        meta: { title: '入站管理', icon: 'ApiOutlined' }
+      },
+      {
+        path: 'relay-bindings',
+        name: 'RelayBindings',
+        component: () => import('@/views/admin/RelayBindings.vue'),
+        meta: { title: '中转绑定', icon: 'SwapOutlined' }
+      },
+      {
+        path: 'certs',
+        name: 'Certs',
+        component: () => import('@/views/admin/Certs.vue'),
+        meta: { title: '证书管理', icon: 'SafetyCertificateOutlined' }
+      },
+      {
         path: 'relay-rules',
         name: 'RelayRules',
         component: () => import('@/views/admin/RelayRules.vue'),
-        meta: { title: '中转规则', icon: 'SwapOutlined' }
+        meta: { title: '中转规则 (旧)', icon: 'SwapOutlined' }
       },
       {
         path: 'users',
@@ -66,12 +84,6 @@ const routes = [
         name: 'Orders',
         component: () => import('@/views/admin/Orders.vue'),
         meta: { title: '订单管理', icon: 'ShoppingOutlined' }
-      },
-      {
-        path: 'tickets',
-        name: 'Tickets',
-        component: () => import('@/views/admin/Tickets.vue'),
-        meta: { title: '工单管理', icon: 'MessageOutlined' }
       },
       {
         path: 'templates',
@@ -109,9 +121,15 @@ const routes = [
   {
     path: '/user',
     component: UserLayout,
-    redirect: '/user/nodes',
+    redirect: '/user/dashboard',
     meta: { role: 'user' },
     children: [
+      {
+        path: 'dashboard',
+        name: 'UserDashboard',
+        component: () => import('@/views/user/Dashboard.vue'),
+        meta: { title: '仪表盘', icon: 'AppstoreOutlined' }
+      },
       {
         path: 'nodes',
         name: 'MyNodes',
@@ -137,12 +155,6 @@ const routes = [
         meta: { title: '流量统计', icon: 'LineChartOutlined' }
       },
       {
-        path: 'tickets',
-        name: 'MyTickets',
-        component: () => import('@/views/user/MyTickets.vue'),
-        meta: { title: '我的工单', icon: 'MessageOutlined' }
-      },
-      {
         path: 'settings',
         name: 'UserSettings',
         component: () => import('@/views/user/Settings.vue'),
@@ -154,11 +166,6 @@ const routes = [
   {
     path: '/',
     redirect: '/user/login'
-  },
-  // 兼容旧登录页
-  {
-    path: '/login',
-    redirect: '/admin/login'
   }
 ]
 

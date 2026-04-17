@@ -1,15 +1,7 @@
 <template>
   <div class="relay-rules-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <h1 class="page-title">
-          <SwapOutlined class="title-icon" />
-          中转规则
-        </h1>
-        <p class="page-desc">管理中转节点与落地节点的转发规则</p>
-      </div>
-      <a-button type="primary" size="large" @click="showAddModal">
+    <div class="page-toolbar">
+      <a-button type="primary" @click="showAddModal">
         <template #icon><PlusOutlined /></template>
         添加规则
       </a-button>
@@ -222,31 +214,10 @@ onMounted(fetchData)
   padding: 0;
 }
 
-.page-header {
+.page-toolbar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--gray-800);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.title-icon {
-  color: var(--primary-500);
-}
-
-.page-desc {
-  color: var(--gray-500);
-  margin: 4px 0 0;
-  font-size: 14px;
+  justify-content: flex-end;
+  margin-bottom: 14px;
 }
 
 .empty-state {

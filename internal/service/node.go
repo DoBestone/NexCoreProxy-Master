@@ -25,8 +25,9 @@ import (
 
 // NodeService 节点服务
 type NodeService struct {
-	clients  sync.Map
-	agentAPI *AgentAPIClient
+	clients     sync.Map
+	agentAPI    *AgentAPIClient
+	provisioner *NodeProvisioner
 }
 
 // NewNodeService 创建节点服务
@@ -417,6 +418,10 @@ func (s *NodeService) syncStatusViaSSH(node *model.Node) (*NodeStatus, error) {
 	return status, nil
 }
 
+// apiTokenPattern 合法 API Token 只允许字母数字，长度 16-128
+// 用于拒绝 SSH fallback 返回的 usage 帮助/错误文本污染数据库
+var apiTokenPattern = regexp.MustCompile(`^[A-Za-z0-9]{16,128}$`)
+
 // refreshAPIToken 刷新 API Token
 func (s *NodeService) refreshAPIToken(node *model.Node) (string, error) {
 	sshClient, err := s.SSHConnect(node.IP, node.SSHPort, node.SSHUser, node.SSHPassword)
@@ -425,14 +430,17 @@ func (s *NodeService) refreshAPIToken(node *model.Node) (string, error) {
 	}
 	defer sshClient.Close()
 
-	output, err := s.SSHRun(sshClient, "ncp-agent get-token 2>/dev/null || cat /usr/local/x-ui/API_TOKEN 2>/dev/null")
+	// 优先读 TokenFile（ncp-agent gen-token 会同步写入），fallback 到 ncp-agent
+	// 多行命令 + 严格比对输出格式，避免 usage 帮助文本被当成 token
+	const probeCmd = `cat /usr/local/x-ui/API_TOKEN 2>/dev/null || ncp-agent get-token 2>/dev/null`
+	output, err := s.SSHRun(sshClient, probeCmd)
 	if err != nil {
 		return "", err
 	}
 
 	token := strings.TrimSpace(output)
-	if token == "" {
-		return "", fmt.Errorf("Token 未设置")
+	if !apiTokenPattern.MatchString(token) {
+		return "", fmt.Errorf("Token 格式无效或未设置（输出长度=%d）", len(token))
 	}
 
 	// 保存到数据库
@@ -929,13 +937,8 @@ func (s *NodeService) GenerateSubscription(userID uint) (string, error) {
 					continue
 				}
 
-				// 获取节点的入站配置
-				client, err := s.getClient(node.ID)
-				if err != nil {
-					continue
-				}
-
-				inbounds, err := client.GetInbounds()
+				// 获取节点的入站配置（优先 NCP API，fallback 3x-ui 面板登录）
+				inbounds, err := s.GetInbounds(node.ID)
 				if err != nil {
 					continue
 				}

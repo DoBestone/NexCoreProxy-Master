@@ -178,29 +178,6 @@ func (s *EmailService) getTemplate(name string) (*template.Template, error) {
 </div>
 </body>
 </html>`,
-		"ticket_reply": `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; padding: 40px;">
-<div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; padding: 40px; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
-<div style="text-align: center; margin-bottom: 32px;">
-<h1 style="color: #1f1f1f; font-size: 24px; margin: 0;">工单回复</h1>
-</div>
-<p style="color: #595959; font-size: 16px; line-height: 1.6;">尊敬的用户，</p>
-<p style="color: #595959; font-size: 16px; line-height: 1.6;">您的工单有了新的回复。</p>
-<div style="background: #f8fafc; border-radius: 12px; padding: 24px; margin: 24px 0;">
-<p style="color: #8c8c8c; font-size: 14px; margin: 0 0 8px;">工单主题：</p>
-<p style="color: #262626; font-size: 16px; margin: 0 0 16px;"><strong>{{.Subject}}</strong></p>
-<p style="color: #8c8c8c; font-size: 14px; margin: 0 0 8px;">回复内容：</p>
-<p style="color: #595959; font-size: 15px; margin: 0; line-height: 1.6;">{{.Content}}</p>
-</div>
-<p style="color: #8c8c8c; font-size: 14px;">请登录系统查看详情。</p>
-<div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
-<p style="color: #bfbfbf; font-size: 12px; margin: 0;">NexCore 代理主机 © 2026</p>
-</div>
-</div>
-</body>
-</html>`,
 	}
 
 	content, ok := templates[name]

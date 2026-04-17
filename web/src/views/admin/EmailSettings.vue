@@ -1,14 +1,5 @@
 <template>
   <div class="email-settings-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <h1 class="page-title">
-        <MailOutlined class="title-icon" />
-        邮件配置
-      </h1>
-      <p class="page-desc">配置 SMTP Lite API 邮件服务，用于发送通知邮件</p>
-    </div>
-
     <!-- 配置卡片 -->
     <a-card class="config-card">
       <a-form :model="form" layout="vertical" class="email-form">
@@ -167,31 +158,6 @@ onMounted(() => {
 .email-settings-page {
   max-width: 800px;
   animation: fadeIn 0.3s ease;
-}
-
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-}
-
-.title-icon {
-  color: #3b82f6;
-  font-size: 24px;
-}
-
-.page-desc {
-  color: #64748b;
-  font-size: 14px;
-  margin-top: 4px;
 }
 
 .config-card, .help-card {

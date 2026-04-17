@@ -397,6 +397,28 @@ func (h *Handler) InstallNode(c *gin.Context) {
 	})
 }
 
+// InstallNodeAgent 用 SSH 部署 ncp-agent + xray（自研 agent 架构）
+//
+// 与 InstallNode（旧版 3x-ui）并存。新建节点推荐走这个路径。
+func (h *Handler) InstallNodeAgent(c *gin.Context) {
+	id := parseUint(c.Param("id"))
+	if _, err := h.node.GetByID(id); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "节点不存在"})
+		return
+	}
+	if err := h.node.InstallAgent(id); err != nil {
+		log.Printf("部署 ncp-agent 失败 [id=%d]: %v", id, err)
+		c.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
+		return
+	}
+	updated, err := h.node.GetByID(id)
+	if err != nil || updated == nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "msg": "部署成功"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "部署成功", "obj": sanitizeNode(*updated)})
+}
+
 // ========== 节点 SSH 管理 ==========
 
 // ResetNodeCredentials 通过SSH重置节点面板账号密码

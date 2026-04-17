@@ -1,20 +1,12 @@
 <template>
   <div class="packages-page">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <h1 class="page-title">
-          <AppstoreOutlined class="title-icon" />
-          套餐管理
-        </h1>
-        <p class="page-desc">配置销售套餐，设置流量、时长和价格</p>
-      </div>
-      <a-button type="primary" size="large" @click="showAddModal">
+    <div class="page-toolbar">
+      <a-button type="primary" @click="showAddModal">
         <template #icon><PlusOutlined /></template>
         添加套餐
       </a-button>
     </div>
-    
+
     <!-- 套餐列表 -->
     <div class="packages-grid">
       <div 
@@ -126,19 +118,50 @@
         </a-row>
         
         <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="服务数量">
-              <a-input-number v-model:value="form.nodes" :min="0" style="width: 100%" />
-              <span class="form-hint">0 表示不限制</span>
+          <a-col :span="8">
+            <a-form-item label="设备数限制">
+              <a-input-number v-model:value="form.deviceLimit" :min="0" style="width: 100%" />
+              <span class="form-hint">0 表示不限</span>
             </a-form-item>
           </a-col>
-          <a-col :span="12">
+          <a-col :span="8">
+            <a-form-item label="限速 Mbps">
+              <a-input-number v-model:value="form.speedLimit" :min="0" style="width: 100%" />
+              <span class="form-hint">0 表示不限</span>
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
             <a-form-item label="排序">
               <a-input-number v-model:value="form.sort" :min="0" style="width: 100%" />
             </a-form-item>
           </a-col>
         </a-row>
-        
+
+        <!-- 关联入站 -->
+        <a-form-item>
+          <template #label>
+            <span>关联入站
+              <span class="form-hint" style="margin-left:8px">
+                未选则该套餐覆盖 0 个入站，用户购买后无可用节点
+              </span>
+            </span>
+          </template>
+          <a-select
+            v-model:value="form.inboundIds"
+            mode="multiple"
+            placeholder="选择该套餐覆盖的入站"
+            :options="inboundOptions"
+            :max-tag-count="6"
+            allow-clear
+            style="width: 100%"
+          >
+            <template #option="{ label, sublabel }">
+              <span>{{ label }}</span>
+              <span class="opt-sub">{{ sublabel }}</span>
+            </template>
+          </a-select>
+        </a-form-item>
+
         <a-form-item label="备注">
           <a-textarea v-model:value="form.remark" :rows="2" placeholder="套餐说明" />
         </a-form-item>
@@ -148,13 +171,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onDeactivated } from 'vue'
+import { ref, computed, onMounted, onDeactivated } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined,
   DatabaseOutlined, ClockCircleOutlined, CloudServerOutlined
 } from '@ant-design/icons-vue'
-import { getAllPackages, addPackage, updatePackage, deletePackage } from '@/api'
+import {
+  getAllPackages, addPackage, updatePackage, deletePackage,
+  listInbounds, getNodes, getPackageInbounds, setPackageInbounds,
+} from '@/api'
 
 const loading = ref(false)
 const packages = ref([])
@@ -171,8 +197,26 @@ const form = ref({
   duration: 30,
   price: 0,
   nodes: 0,
+  deviceLimit: 0,
+  speedLimit: 0,
   sort: 0,
-  remark: ''
+  remark: '',
+  inboundIds: [],
+})
+
+// 节点 + 入站联动选项（label 显示节点名/入站名/端口）
+const inbounds = ref([])
+const nodes = ref([])
+const inboundOptions = computed(() => {
+  const nodeMap = new Map(nodes.value.map(n => [n.id, n]))
+  return inbounds.value.map(inb => {
+    const n = nodeMap.get(inb.nodeId)
+    return {
+      value: inb.id,
+      label: `${n ? n.name : '#' + inb.nodeId} · ${inb.name}`,
+      sublabel: `${inb.protocol?.toUpperCase()} :${inb.port}`,
+    }
+  })
 })
 
 const formatTraffic = (bytes) => {
@@ -186,8 +230,14 @@ const formatTraffic = (bytes) => {
 const fetchPackages = async () => {
   loading.value = true
   try {
-    const res = await getAllPackages()
-    packages.value = res.obj || []
+    const [pkgRes, inbRes, nodeRes] = await Promise.all([
+      getAllPackages(),
+      listInbounds(),
+      getNodes(),
+    ])
+    packages.value = pkgRes.obj || []
+    inbounds.value = inbRes.obj || []
+    nodes.value = nodeRes.obj || []
   } catch (e) {
     message.error('获取套餐列表失败')
   } finally {
@@ -195,17 +245,32 @@ const fetchPackages = async () => {
   }
 }
 
+const emptyForm = () => ({
+  name: '', protocol: 'all',
+  trafficGB: 0, duration: 30, price: 0,
+  nodes: 0, deviceLimit: 0, speedLimit: 0,
+  sort: 0, remark: '', inboundIds: [],
+})
+
 const showAddModal = () => {
   editingPackage.value = null
-  form.value = { name: '', protocol: 'all', trafficGB: 0, duration: 30, price: 0, nodes: 0, sort: 0, remark: '' }
+  form.value = emptyForm()
   modalVisible.value = true
 }
 
-const editPackage = (pkg) => {
+const editPackage = async (pkg) => {
   editingPackage.value = pkg
   form.value = {
+    ...emptyForm(),
     ...pkg,
-    trafficGB: pkg.traffic ? pkg.traffic / (1024 * 1024 * 1024) : 0
+    trafficGB: pkg.traffic ? pkg.traffic / (1024 * 1024 * 1024) : 0,
+  }
+  // 拉关联 inbound
+  try {
+    const r = await getPackageInbounds(pkg.id)
+    form.value.inboundIds = r.obj || []
+  } catch (e) {
+    /* ignore */
   }
   modalVisible.value = true
 }
@@ -215,19 +280,29 @@ const handleSubmit = async () => {
   try {
     const data = {
       ...form.value,
-      traffic: form.value.trafficGB * 1024 * 1024 * 1024
+      traffic: form.value.trafficGB * 1024 * 1024 * 1024,
     }
+    delete data.inboundIds // 单独走端点
+    let pkgId
     if (editingPackage.value) {
       await updatePackage(editingPackage.value.id, data)
-      message.success('更新成功')
+      pkgId = editingPackage.value.id
     } else {
-      await addPackage(data)
-      message.success('添加成功')
+      const r = await addPackage(data)
+      pkgId = r.obj?.id
+    }
+    if (pkgId) {
+      const r = await setPackageInbounds(pkgId, form.value.inboundIds || [])
+      if (r.affectedNodes > 0) {
+        message.success(`保存成功，已通知 ${r.affectedNodes} 个节点更新`)
+      } else {
+        message.success('保存成功')
+      }
     }
     modalVisible.value = false
     fetchPackages()
   } catch (e) {
-    message.error('操作失败')
+    message.error(e?.msg || '操作失败')
   } finally {
     submitting.value = false
   }
@@ -262,34 +337,14 @@ onMounted(() => {
   animation: fadeIn 0.3s ease;
 }
 
-.page-header {
+.page-toolbar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 16px;
+  justify-content: flex-end;
+  margin-bottom: 14px;
 }
 
-.page-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
-}
-
-.title-icon {
-  color: #3b82f6;
-  font-size: 24px;
-}
-
-.page-desc {
-  color: #64748b;
-  font-size: 14px;
-  margin-top: 4px;
-}
+.form-hint { color: #94a3b8; font-size: 11.5px; }
+.opt-sub { float: right; color: #94a3b8; font-size: 11.5px; font-family: ui-monospace, 'JetBrains Mono', monospace; }
 
 /* 套餐网格 */
 .packages-grid {
@@ -464,14 +519,8 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .packages-grid {
-    grid-template-columns: 1fr;
-  }
+  .page-toolbar .ant-btn { width: 100%; }
+  .packages-grid { grid-template-columns: 1fr; }
 }
 
 @keyframes fadeIn {
