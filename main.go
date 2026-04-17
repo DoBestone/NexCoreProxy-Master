@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	version   = "2.0.3"
+	version   = "2.0.4"
 	buildTime = "unknown"
 )
 
@@ -46,17 +46,17 @@ func main() {
 	flag.Parse()
 
 	if showVersion {
-		fmt.Printf("NexCoreProxy Master v%s (built: v%s)\n", version, buildTime)
+		fmt.Printf("NexCoreProxy Master v%s (built: %s)\n", version, buildTime)
 		return
 	}
 
 	log.Println("Starting NexCoreProxy Master...")
 
 	// MySQL DSN
-	dsn := fmt.Sprintf("v%s:v%s@tcp(v%s:v%s)/v%s?charset=utf8mb4&parseTime=True&loc=Local",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		dbUser, dbPass, dbHost, dbPort, dbName)
 
-	log.Printf("Connecting to database: v%s@v%s:v%s/v%s", dbUser, dbHost, dbPort, dbName)
+	log.Printf("Connecting to database: %s@%s:%s/%s", dbUser, dbHost, dbPort, dbName)
 
 	// 初始化数据库
 	if err := model.InitDB(dsn); err != nil {
