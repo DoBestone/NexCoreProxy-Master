@@ -412,10 +412,35 @@ func renderSingBox(nodes []ProxyNode) string {
 	outbounds[0]["outbounds"] = append([]string{"自动选择"}, names...)
 	outbounds[1]["outbounds"] = names
 
+	// 完整 sing-box 配置 —— inbounds / dns / route 都给全，客户端拿来即用
 	root := map[string]any{
-		"log":        map[string]any{"level": "info"},
-		"outbounds":  outbounds,
-		"route":      map[string]any{"final": "PROXY"},
+		"log": map[string]any{"level": "info"},
+		"dns": map[string]any{
+			"servers": []map[string]any{
+				{"tag": "cloudflare", "address": "https://1.1.1.1/dns-query", "detour": "PROXY"},
+				{"tag": "local", "address": "223.5.5.5", "detour": "direct"},
+			},
+			"rules": []map[string]any{
+				{"outbound": []string{"direct"}, "server": "local"},
+			},
+			"strategy": "ipv4_only",
+		},
+		"inbounds": []map[string]any{
+			{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080},
+			{"type": "tun", "tag": "tun-in",
+				"interface_name": "tun0",
+				"stack":          "mixed",
+				"address":        []string{"172.19.0.1/30"},
+				"auto_route":     true,
+				"strict_route":   true,
+				"sniff":          true,
+			},
+		},
+		"outbounds": outbounds,
+		"route": map[string]any{
+			"final":                  "PROXY",
+			"auto_detect_interface":  true,
+		},
 	}
 	out, _ := json.MarshalIndent(root, "", "  ")
 	return string(out)
@@ -442,13 +467,18 @@ func nodeToSingBox(n *ProxyNode) map[string]any {
 		if method == "" {
 			method = "2022-blake3-aes-128-gcm"
 		}
+		// SS-2022 多用户：sing-box 需要 password = "server_psk:user_psk"
+		pwd := n.Password
+		if strings.HasPrefix(method, "2022-") && n.ServerPassword != "" {
+			pwd = n.ServerPassword + ":" + n.Password
+		}
 		return map[string]any{
 			"type":        "shadowsocks",
 			"tag":         n.Name,
 			"server":      n.Host,
 			"server_port": n.Port,
 			"method":      method,
-			"password":    n.Password,
+			"password":    pwd,
 		}
 	case "hysteria2", "hy2":
 		return map[string]any{
