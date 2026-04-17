@@ -1,206 +1,229 @@
-# NexCore代理主机 开发文档
+# NexCoreProxy Master 开发指南
 
-## 项目信息
+> v2.0 自研 agent 架构。3x-ui 已完全替代，节点端只跑 xray + ncp-agent。
 
-- **项目名称**: NexCore代理主机
-- **项目路径**: `/root/projects/NexCoreProxy-Master` (主控面板)
-- **Agent仓库**: https://github.com/DoBestone/NexCoreProxy-Agent (公开)
-- **技术栈**: Go + Gin + GORM + Vue 3 + Vite + Ant Design Vue 4
+## 仓库结构
 
-## 一键安装
-
-**Agent (节点服务端):**
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Agent/main/install.sh) -u admin -pass YourPassword
 ```
-
-**Master (主控面板):**
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -pass YourPassword
-```
-
-## 数据库配置
-
-- **主机**: 127.0.0.1:3307 (Docker)
-- **数据库**: nexcore_proxy
-- **用户**: nexcore_proxy / NexCore@2026!
-- ⚠️ **注意**: 任何时候都不要使用 `nexcore` 数据库，不要使用 `root` 连接
-
-## 端口配置
-
-| 服务 | 端口 |
-|------|------|
-| Master 服务 | 8084 |
-| ncp-api (Agent) | 54322 |
-| MySQL | 3307 |
-
-## 启动方式
-
-```bash
-cd /root/projects/NexCoreProxy-Master
-./start.sh   # 启动（自动关闭旧进程）
-./stop.sh    # 停止
-```
-
----
-
-## 已完成功能
-
-### 后端功能
-
-1. ✅ 数据模型设计 (User, Node, Package, Order, Ticket, InboundTemplate, UserNode, Announcement, EmailConfig)
-2. ✅ JWT Token 认证
-3. ✅ 后端 API 实现
-   - 登录、注册
-   - 节点管理（增删改查、SSH安装、状态同步）
-   - 用户管理
-   - 套餐管理
-   - 订单管理
-   - 工单系统（创建、回复、关闭）
-   - 公告系统
-   - 邮件通知
-4. ✅ SSH 自动安装节点 (x-ui)
-5. ✅ 订阅链接生成 (vmess/vless/trojan/shadowsocks)
-6. ✅ 用户购买套餐自动分配节点
-7. ✅ Cloudflare Turnstile 人机验证
-8. ✅ x-ui 面板反向代理 (通过密钥访问)
-9. ✅ Agent API HTTP 客户端 (`agent_api.go`)
-10. ✅ 用户端回复工单 API
-
-### 前端功能
-
-#### 管理端
-1. ✅ 仪表盘（统计概览）
-2. ✅ 节点管理
-   - 节点列表（卡片展示、状态、资源监控）
-   - SSH 安装
-   - API Token 显示与复制
-   - 面板访问链接
-   - 自动刷新
-3. ✅ 用户管理
-4. ✅ 套餐管理
-5. ✅ 订单管理
-6. ✅ 工单管理
-7. ✅ 节点模板
-8. ✅ 公告管理
-9. ✅ 系统设置（邮件配置）
-
-#### 用户端
-1. ✅ 我的节点（订阅链接）
-2. ✅ 购买套餐
-3. ✅ 我的订单
-4. ✅ 流量统计（ECharts 图表）
-5. ✅ 我的工单（回复功能）
-6. ✅ 账户设置（修改密码）
-
-#### 前端优化
-1. ✅ 侧边栏固定定位 + 滚动支持
-2. ✅ 头部固定 + 毛玻璃效果
-3. ✅ 侧边栏去掉圆角，选中左边框高亮
-4. ✅ 移动端菜单按钮移到头部
-5. ✅ 移除悬浮 FAB 按钮
-6. ✅ 根路径跳转用户端登录页
-
----
-
-## 数据库表结构
-
-### users 用户表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | bigint | 主键 |
-| username | varchar(50) | 用户名 |
-| password | varchar(255) | 密码 |
-| email | varchar(100) | 邮箱 |
-| role | varchar(20) | 角色 (admin/user) |
-| balance | float | 余额 |
-| traffic_limit | bigint | 流量限制 |
-| traffic_used | bigint | 已用流量 |
-| expire_at | datetime | 到期时间 |
-| enable | bool | 是否启用 |
-| invite_code | varchar(20) | 邀请码 |
-| invited_by | bigint | 邀请人ID |
-
-### nodes 节点表
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | bigint | 主键 |
-| name | varchar(100) | 节点名称 |
-| ip | varchar(50) | IP地址 |
-| port | bigint | 面板端口 |
-| username | varchar(50) | 面板用户名 |
-| password | varchar(255) | 面板密码 |
-| ssh_port | bigint | SSH端口 |
-| ssh_user | varchar(50) | SSH用户 |
-| ssh_password | varchar(255) | SSH密码 |
-| agent_key | varchar(64) | Agent连接密钥 |
-| api_token | varchar(255) | ncp-api Token |
-| api_port | bigint | ncp-api端口 |
-| status | varchar(20) | 状态 |
-| cpu | float | CPU使用率 |
-| memory | float | 内存使用率 |
-| disk | float | 磁盘使用率 |
-| xray_version | varchar(20) | Xray版本 |
-
----
-
-## 开发规范
-
-### 认证系统
-- **管理端**: `/admin/login` → `admin_token`
-- **用户端**: `/user/login` → `user_token`
-- 两端 token 独立存储，可同时登录
-
-### API 路径
-- 管理端 API: `/admin/*` (需要 AdminMiddleware)
-- 用户端 API: `/my/*` (需要 AuthMiddleware)
-- 公开 API: `/api/login`, `/api/register`, `/api/packages`
-
-### 字段命名
-- 数据库字段: `api_token`, `api_port`, `memory`
-- JSON 返回: `apiToken`, `apiPort`, `memory`
-- ⚠️ 不要使用 `mem` 字段名
-
----
-
-## 待完善功能
-
-1. 节点状态实时同步优化
-2. 支付功能集成（支付宝/微信）
-3. 流量统计实时更新
-4. 节点模板批量应用
-
----
-
-## 访问地址
-
-- **管理端**: https://ncp.nice07.com/admin/login
-- **用户端**: https://ncp.nice07.com/user/login
-- **默认账号**: admin / admin123
-
----
-
-## Cloudflare 缓存
-
-使用 cloudflare-dns skill 清除缓存:
-
-```bash
-CF=~/.openclaw/workspace/skills/cloudflare-dns/scripts/cf-dns
-$CF -d nice07.com cache-purge
+NexCoreProxy-Master/                  # 本仓库（DoBestone/NexCoreProxy-Master，公开）
+├── main.go                           # Master 后端入口
+├── internal/
+│   ├── model/                        # 数据模型
+│   │   ├── model.go                  # User/Node/Package/Order...
+│   │   ├── inbound.go                # Inbound/Relay/RelayBinding/PackageInbound
+│   │   ├── agent.go                  # NodeConfigVersion/UserTraffic/NodeOnlineIP
+│   │   ├── cert.go                   # AcmeAccount/Certificate
+│   │   └── etag.go                   # BumpEtag / GetEtag
+│   ├── service/
+│   │   ├── agent_protocol.go         # /server/config 渲染
+│   │   ├── agent_push.go             # /server/push 流量入账 + kicks
+│   │   ├── inbound.go                # Inbound CRUD + bump etag
+│   │   ├── relay_syncer.go           # RelayBinding → Relay 自动展开
+│   │   ├── relay_health.go           # TCP 探测
+│   │   ├── subscription.go           # 用户 → ProxyNode 解析
+│   │   ├── subscription_render.go    # v2rayN/Clash/sing-box 渲染
+│   │   ├── cert.go                   # ACME (lego, Cloudflare)
+│   │   ├── provisioner.go            # 默认入站集
+│   │   ├── install_agent.go          # SSH 部署 ncp-agent
+│   │   ├── install_agent.sh          # 内嵌的节点安装脚本副本
+│   │   ├── backup.go / alert.go      # DB 备份 / 节点离线告警
+│   │   └── business_cron.go          # 过期/月重置/在线 IP 清理
+│   └── handler/                      # Gin 路由 + handler
+├── web/                              # Vue 3 前端
+│   └── src/views/admin/
+│       ├── Inbounds.vue              # 入站管理
+│       ├── RelayBindings.vue         # 中转绑定
+│       └── Certs.vue                 # 证书管理
+├── Agent/                            # 节点端 agent（独立 go module）
+│   ├── cmd/ncp-agent/main.go
+│   ├── internal/{config,protocol,puller,pusher,statsclient,xrayrender,xraymgr,firewall,upgrade}
+│   ├── install-agent.sh              # 节点安装脚本（含 3x-ui 自动卸载）
+│   └── systemd/ncp-agent.service
+├── build-agent-binaries.sh           # 编 ncp-agent amd64+arm64
+├── install.sh                        # Master 一键安装
+├── update.sh                         # Master 自动更新（同步下发新 agent 二进制）
+├── start.sh / stop.sh                # 本地启停
+└── .github/workflows/release.yml     # CI: tag 触发，编 master+agent+前端
 ```
 
 ---
 
-## 更新记录
+## 端口约定
 
-### 2026-03-27
-- 修复 `api_token` 字段长度问题 (VARCHAR 255)
-- 修复 `memory` 字段名问题 (原为 `mem`)
-- 修复启动脚本自动关闭旧进程
-- 添加编辑节点显示 API Token
-- 根路径跳转用户端登录页
+| 服务 | 默认端口 | 说明 |
+|------|----------|------|
+| 前端 dev server | **9300** | `web/vite.config.js`，`/api` 反代到 9310 |
+| 后端 API | **9310** | `main.go` 默认 |
+| MySQL | 127.0.0.1:3306 | DB `nexcore_proxy` |
+| 节点 xray API (内部) | 127.0.0.1:10085 | gRPC stats |
 
-### 2026-03-26
-- 项目初始化
-- 核心功能实现
-- 前端页面搭建
+---
+
+## 本地开发
+
+### 后端
+```bash
+cd Master
+go run . --db-pass <YourPassword> \
+  --master-url http://localhost:9310 \
+  --agent-binary-url 'http://localhost:9310/api/binaries/ncp-agent-linux-${ARCH}'
+```
+
+### 前端
+```bash
+cd Master/web
+npm install
+npm run dev   # http://localhost:9300
+```
+
+### 节点 agent（本地调试）
+```bash
+cd Master/Agent
+go run ./cmd/ncp-agent --config /etc/ncp-agent/agent.yaml
+```
+
+---
+
+## CI 发版流程
+
+1. 改版本号：`main.go` 的 `version` 常量 + `web/package.json` 的 `version`
+2. 提交：
+   ```bash
+   git add -A && git commit -m "release: v2.x.x — <说明>"
+   git push origin main
+   git tag v2.x.x && git push origin v2.x.x
+   ```
+3. CI 自动构建并发布到 [Releases](https://github.com/DoBestone/NexCoreProxy-Master/releases)：
+   - `nexcore-master-linux-{amd64,arm64}` — Master 后端
+   - `ncp-agent-linux-{amd64,arm64}` — 节点 agent
+   - `frontend-dist.tar.gz` — 前端
+   - `install-agent.sh` / `update.sh`
+
+---
+
+## 数据流（自研 agent 架构）
+
+### 节点拉配置
+```
+agent (60s 周期)
+  → GET /api/v1/server/config?etag=<cur>
+  Authorization: Bearer <node.agent_key>
+  
+master:
+  ├─ 校 token → 反查 Node
+  ├─ 比对 etag → 304 / 200
+  └─ 200 时构造 AgentConfig:
+      - inbounds (NodeID = node.id, enable=true) + 注入 cert PEM
+      - users (joins orders→packages→package_inbounds, 排除过期/超额/禁用)
+      - relays (RelayNodeID = node.id) + 解析多级中转目标
+
+agent 收到后:
+  ├─ xrayrender.Render → xray.json
+  ├─ xray test → 校验
+  ├─ atomic rename → /usr/local/etc/xray/config.json
+  ├─ systemctl restart xray
+  ├─ firewall.Reconcile → ufw/firewalld 开端口
+  └─ 写缓存 + 更新 etag
+```
+
+### 节点推流量
+```
+agent (60s 周期)
+  → xray api stats --reset → 解析 user>>>1@nx>>>traffic>>>uplink
+  → POST /api/v1/server/push
+     {stats: {1@nx: {up:..., down:...}}, online: {...}, system: {...}}
+
+master:
+  ├─ 入账：UPSERT user_traffic (按 user×node×小时桶)
+  ├─ users.traffic_used += up+down
+  ├─ 计算 kicks（超额/过期/禁用）→ 标 disabled + bump 受影响节点 etag
+  └─ 返回 {success: true, kicks: [...], currentEtag: ...}
+
+agent: kicks 非空 → 立即重拉 config（可选，puller 60s 也会赶上）
+```
+
+### etag 触发场景
+| 操作 | bump 哪些节点 |
+|------|---------------|
+| Inbound 增删改 | 该 NodeID + 所有指向它的 Relay 的 RelayNodeID |
+| Relay/Binding 改 | RelayNodeID（wrap 模式额外 bump BackendNodeID） |
+| User UUID/启用变更 | 该用户授权范围内所有 NodeID + Relay 节点 |
+| Cert 签发/续期 | 引用该域名的 Inbound 所在节点 |
+| Order paid (激活套餐) | 套餐覆盖到的所有节点 |
+| RelayHealth 状态翻转 | 该 RelayNodeID |
+
+---
+
+## 数据库迁移
+
+新部署：`AutoMigrate` 自动创建所有新表。
+
+老部署（v1.x → v2.0）：
+```bash
+# 启动新 master 后 AutoMigrate 会加大部分新列；以下是补漏 SQL（如需）：
+mysql nexcore_proxy <<SQL
+ALTER TABLE nodes ADD COLUMN role VARCHAR(20) DEFAULT 'backend';
+ALTER TABLE nodes ADD COLUMN region VARCHAR(50);
+ALTER TABLE nodes ADD COLUMN installed TINYINT(1) DEFAULT 0;
+ALTER TABLE nodes ADD COLUMN agent_version VARCHAR(30);
+ALTER TABLE users ADD COLUMN uuid VARCHAR(36);
+ALTER TABLE users ADD COLUMN trojan_password VARCHAR(64);
+ALTER TABLE users ADD COLUMN ss2022_password VARCHAR(64);
+ALTER TABLE users ADD COLUMN speed_limit INT DEFAULT 0;
+ALTER TABLE users ADD COLUMN device_limit INT DEFAULT 0;
+ALTER TABLE users ADD COLUMN reset_day INT DEFAULT 1;
+ALTER TABLE users ADD UNIQUE INDEX idx_user_uuid (uuid);
+ALTER TABLE packages ADD COLUMN transfer_gb INT DEFAULT 0;
+ALTER TABLE packages ADD COLUMN device_limit INT DEFAULT 0;
+ALTER TABLE packages ADD COLUMN speed_limit INT DEFAULT 0;
+SQL
+
+# 新表由 AutoMigrate 自动建：inbounds / package_inbounds / relays / relay_bindings /
+# node_config_versions / user_traffic / node_online_ips / node_events /
+# acme_accounts / certificates
+
+# 一次性清理老表（可选）
+nexcore-master --db-pass <pwd> --drop-legacy
+```
+
+---
+
+## UI 规范
+
+遵循 NexCore 统一 UI 规范（紧凑控制台 + 反 AI 战术），核心：
+- 主色 `#3b82f6` dominant，状态用 6px 圆点不用色块
+- 表格行高 40-44px，表头 12px / 单元格 13px / padding 10×14
+- mono 字体（端口/UUID/域名/地址）+ tabular-nums
+- 表单 form-item 间距 14px，label 12px / 26px 高
+- 操作列文字按钮，无图标按钮
+- 协议 pill 用克制配色（蓝/灰/暖色），不彩虹
+- 无 `transition: all`，无 hover scale
+
+---
+
+## 联调流程
+
+1. 启动 master + 前端 dev server
+2. UI 添加节点（IP + SSH 凭据） → 点「部署 ncp-agent」
+3. 在节点上 `journalctl -u ncp-agent -f` 看 puller 日志
+4. UI 创建 Inbound → 节点上 `cat /usr/local/etc/xray/config.json` 验证渲染
+5. UI 创建套餐并关联 Inbound
+6. 注册用户 → 购买套餐 → 拿订阅链接
+7. 客户端导入 → 验证连通
+
+---
+
+## 常见调试
+
+```bash
+# 节点端
+systemctl status ncp-agent xray
+journalctl -u ncp-agent -f
+journalctl -u xray -f
+ss -tlnp | grep -E '443|8443|8388'
+
+# Master 端
+tail -f /opt/nexcoreproxy-master/logs/server.log
+mysql nexcore_proxy -e "SELECT * FROM node_config_versions"
+mysql nexcore_proxy -e "SELECT * FROM user_traffic ORDER BY bucket_hour DESC LIMIT 10"
+```

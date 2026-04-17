@@ -1,208 +1,229 @@
-# NexCore代理主机
+# NexCoreProxy
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/DoBestone/NexCoreProxy-Master)](https://github.com/DoBestone/NexCoreProxy-Master/releases)
 
-基于 x-ui 的多节点网络代理管理系统。
+自研 agent 架构的多节点代理管理平台。Master 是唯一权威，节点端只跑 xray + 自研 ncp-agent，告别 3x-ui 的双 source-of-truth 困境。
 
-## 一键安装
+---
 
-```bash
-# 基本用法（必须指定密码）
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -pass YourPassword123
+## 架构总览
 
-# 完整参数
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) \
-  -p 8082 \
-  -u admin \
-  -pass YourPassword123 \
-  --db-host localhost \
-  --db-port 3306 \
-  --db-user root \
-  --db-pass dbpassword \
-  --db-name nexcore
+```
+┌─────────────────────────────────────────────────┐
+│  Master (Go + Vue + MySQL)                      │
+│  · users / packages / orders                    │
+│  · inbounds / relays / certs                    │
+│  · /api/v1/server/{config,push}  (agent 协议)   │
+│  · /api/binaries/:name           (agent 下发)   │
+└─────────────────────────────────────────────────┘
+              ▲                    ▲
+              │ pull config (etag) │ push stats (60s)
+              │                    │
+┌─────────────┴────────────────────┴──────────────┐
+│  Node                                            │
+│  ┌──────────────┐    ┌────────────────────┐    │
+│  │ xray-core    │◄───│ ncp-agent          │    │
+│  │              │    │ - 渲染 xray.json   │    │
+│  │              │───►│ - 拉 stats gRPC    │    │
+│  └──────────────┘    │ - 防火墙端口收敛   │    │
+│                      │ - 自动升级（窗口 03-05）│
+│                      └────────────────────┘    │
+└─────────────────────────────────────────────────┘
 ```
 
-### 安装参数
+---
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-p, --port` | Web服务端口 | 8082 |
-| `-u, --user` | 管理员用户名 | admin |
-| `-pass, --password` | 管理员密码 | **必填** |
-| `--db-host` | 数据库主机 | localhost |
-| `--db-port` | 数据库端口 | 3306 |
-| `--db-user` | 数据库用户 | root |
-| `--db-pass` | 数据库密码 | 空 |
-| `--db-name` | 数据库名 | nexcore |
-
-### 安装示例
+## 一键安装（Master 端）
 
 ```bash
-# 最简安装（只需指定密码）
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -pass MySecretPass123
-
-# 自定义端口和账号
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) -p 9000 -u superadmin -pass StrongPass!
-
-# 完整配置
-bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh) \
-  --port 8082 \
-  --user admin \
-  --password MyPassword123 \
-  --db-host 127.0.0.1 \
-  --db-port 3306 \
-  --db-user root \
-  --db-pass dbpassword \
-  --db-name nexcore
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/install.sh)
 ```
+
+交互式向导会问：
+- 安装目录 / Web 端口 / 管理员账号
+- MySQL 配置（自动安装或对接已有）
+- 域名 + Let's Encrypt SSL（可选）
+- **Master 公网 URL**（节点 ncp-agent 回连用，必填）
+- 告警邮箱（可选）
+
+安装脚本会下载：
+- `nexcore-master-linux-{arch}` — Master 后端
+- `frontend-dist.tar.gz` — Vue 前端
+- `ncp-agent-linux-{amd64,arm64}` — 节点端二进制（master 通过 `/api/binaries` 服务）
+- `update.sh` — 自动更新脚本
+
+---
+
+## 添加节点（任一方式）
+
+### 方式 1：管理后台一键部署
+1. UI → 服务器管理 → 添加节点（IP / SSH 凭据）
+2. 点「部署 ncp-agent」
+3. 自动卸载现有 3x-ui（数据备份到 `/root/x-ui-backup-*`）
+4. 装 xray + ncp-agent + systemd 单元
+5. agent 回连 master，UI 节点变绿，**SSH 密码自动清除**
+
+### 方式 2：手动 SSH 跑脚本
+```bash
+ssh root@<node>
+NCP_MASTER_URL=https://master.example.com \
+NCP_NODE_ID=1 \
+NCP_NODE_TOKEN=$(从 nodes.agent_key 拿) \
+NCP_AGENT_URL='https://master.example.com/api/binaries/ncp-agent-linux-${ARCH}' \
+bash <(curl -Ls https://raw.githubusercontent.com/DoBestone/NexCoreProxy-Master/main/Agent/install-agent.sh)
+```
+
+---
 
 ## 核心功能
 
+### 协议支持
+| 协议 | 客户端 | 状态 |
+|------|--------|------|
+| VLESS + Reality (XTLS-Vision) | ✅ | 推荐主力 |
+| VLESS + TLS (ws/grpc/h2) | ✅ | CDN 友好 |
+| VMess + TLS | ✅ | 老客户端兼容 |
+| Trojan + TLS | ✅ | |
+| Shadowsocks-2022 | ✅ | 高速 |
+| Hysteria2 + 端口跳跃 | ✅ | UDP 高速 |
+| TUIC v5 | ✅ | UDP 备选 |
+
 ### 节点管理
-- **SSH自动安装**: 添加服务器后一键SSH安装x-ui
-- **API管理**: 通过x-ui API管理所有节点
-- **状态同步**: 自动同步节点CPU、内存、流量等状态
+- **零人工节点上线**：SSH 一键部署，自动卸载旧 3x-ui
+- **配置自动同步**：DB 任何变更 → bump etag → 节点 60s 内拉到新配置 → xray reload
+- **自动升级**：master 标版本 → 节点凌晨 03-05 自动升级 ncp-agent / xray，失败回滚
 
-### 订阅系统
-- 用户购买套餐后获得订阅链接
-- 订阅链接包含所有节点配置（vmess/vless/trojan/shadowsocks）
-- 支持主流客户端（v2rayN、Clash等）
+### 中转
+- **节点级整体绑定**（RelayBinding）：选 Relay + Backend → 自动展开为每条 Inbound 的 Relay
+- **transparent 模式**：dokodemo 透传，UUID/协议跟落地完全一致
+- **wrap 模式**：协议套壳，relay 暴露成 vless+reality 等伪装协议，outbound 用 trunk 凭据回落地
+- **多级中转**：Relay A → Relay B → Backend，递归解析目标
+- **自动健康探测**：60s TCP probe，bad 自动从订阅剔除
 
-### 套餐销售
-- 创建不同套餐（流量、时长、价格）
-- 用户购买后自动分配节点
-- 支持余额充值
+### 订阅
+- 一个 URL 支持多格式：v2rayN base64 / Clash.Meta / sing-box（按 UA 嗅探或 `?type=` 强制）
+- 流量信息塞 `Subscription-Userinfo` header，客户端自动显示已用/剩余/到期
+- 直连 + 中转条目自动展开（`节点A | inbound` / `中转→节点A | inbound`）
 
-## 功能特性
+### 套餐
+- 套餐 ↔ 入站 多对多关联（不同套餐覆盖不同节点子集）
+- 限额：流量 / 时长 / 设备数 / 速度 / 月重置日
+- 余额支付即时激活，外部支付管理员确认后自动 bump etag
 
-### 管理端
-- 仪表盘 - 系统状态总览
-- 节点管理 - 添加、SSH安装、管理多个节点服务器
-- 用户管理 - 管理用户账户、余额、流量
-- 套餐管理 - 创建销售套餐
-- 订单管理 - 查看和处理订单
-- 工单管理 - 处理用户工单
-- 节点模板 - 配置入站模板
-- 系统设置 - 系统配置
+### ACME 证书
+- Cloudflare DNS-01 自动签发
+- 入站填 `CertDomain` → master 签发 → 通过 config 推给 agent → xray 自动用上
+- 到期 < 30 天自动续，续完 bump 涉及节点
 
-### 用户端
-- 我的节点 - 查看分配的节点和订阅链接
-- 购买套餐 - 浏览和购买套餐
-- 我的订单 - 查看订单记录
-- 流量统计 - 查看流量使用情况
-- 我的工单 - 提交和查看工单
+### 自动化运维
+- 默认入站集（minimal / standard / full）一键预设
+- 防火墙端口自动收敛（ufw / firewalld / iptables）
+- 业务定时：过期扫描 / 月流量重置 / 在线 IP 清理
+- DB 备份（mysqldump → gzip，保留 7 日 + 4 周 + 12 月）
+- 节点离线邮件告警（去重 1h，恢复发"已恢复"）
+
+---
+
+## 自动更新
+
+```bash
+cd /opt/nexcoreproxy-master
+bash update.sh             # 检查并升级
+bash update.sh --force     # 强制重装
+```
+
+更新会：
+- 备份当前二进制 + .env 到 `.backup/<时间戳>/`
+- 拉最新 master 后端、ncp-agent 二进制（amd64+arm64）、前端、scripts
+- 检测 .env 是否缺 v2.0 字段，缺了给修复提示
+- 重启 systemd 服务
+
+---
+
+## 端口与目录约定
+
+| 项 | 默认 |
+|----|------|
+| Web 管理端口 | 8080（前端 + API） |
+| MySQL | 127.0.0.1:3306 / `nexcore_proxy` |
+| 安装目录 | `/opt/nexcoreproxy-master/` |
+| 数据目录 | `<install>/data/` |
+| 日志目录 | `<install>/logs/` |
+| 备份目录 | `<install>/backups/` |
+| 节点二进制目录 | `<install>/binaries/` |
+
+节点端：
+
+| 项 | 路径 |
+|----|------|
+| ncp-agent 二进制 | `/usr/local/bin/ncp-agent` |
+| xray 二进制 | `/usr/local/bin/xray` |
+| agent 配置 | `/etc/ncp-agent/agent.yaml` |
+| xray 配置 | `/usr/local/etc/xray/config.json` |
+| 缓存（断网容灾） | `/var/lib/ncp-agent/` |
+| 日志 | `/var/log/ncp-agent/` |
+| 自动签发证书 | `/usr/local/etc/xray/certs/` |
+
+---
 
 ## 技术栈
 
-- **后端**: Go + Gin + GORM + MySQL
-- **前端**: Vue 3 + Vite + Ant Design Vue 4
-- **架构**: Master-Agent 分布式架构
-- **SSH**: golang.org/x/crypto/ssh
+| 层 | 技术 |
+|----|------|
+| Master 后端 | Go 1.22+ / Gin / GORM / MySQL |
+| Master 前端 | Vue 3 / Vite / Ant Design Vue 4 |
+| 节点 agent | Go 1.22+（独立 module，瘦二进制 ~6MB） |
+| 节点协议 | xray-core 1.8.24 |
+| ACME | go-acme/lego (Cloudflare DNS-01) |
+| 证书 / 反代 | Caddy / Nginx + Let's Encrypt |
 
-## 环境要求
+---
 
-- MySQL 5.7+ 或 MySQL 8.0+
-- Go 1.22+ (编译时)
-
-## 手动安装
-
-### 数据库配置
-
-创建数据库：
-```sql
-CREATE DATABASE nexcore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-### 编译
+## 手动编译
 
 ```bash
+# Master 后端
 git clone https://github.com/DoBestone/NexCoreProxy-Master.git
 cd NexCoreProxy-Master
-go mod tidy
-go build -o nexcore .
+go mod tidy && go build -o nexcore-master .
+
+# 前端
+cd web && npm install && npm run build
+
+# 节点 agent（多架构，输出到 ./binaries）
+bash build-agent-binaries.sh
 ```
 
-### 配置
+---
 
-创建 `.env` 文件：
-```bash
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASS=your_password
-DB_NAME=nexcore
-PORT=8082
-```
+## API 速查
 
-### 启动
+公开：
+- `GET /api/packages` 套餐列表
+- `GET /api/sub/:token` 订阅（UA 嗅探 / `?type=clash|singbox|v2rayn`）
+- `GET /api/binaries/:name` 二进制下载（agent 安装用）
 
-```bash
-./start.sh
-```
+agent 协议（Bearer = node.agent_key）：
+- `GET /api/v1/server/config?etag=` 拉配置（304 可省）
+- `POST /api/v1/server/push` 上报流量 + 在线 + 系统快照
 
-## 使用流程
+管理员：
+- `GET /api/inbounds` `POST /api/inbounds`（CRUD + `?nodeId=`）
+- `GET /api/relay-bindings` `POST /api/relay-bindings`（CRUD）
+- `GET /api/certs` `POST /api/certs/issue` `PUT /api/acme/settings`
+- `POST /api/nodes/:id/install-agent` 一键部署
+- `POST /api/nodes/:id/provision` 写入预设入站集
+- `PUT /api/packages/:id/inbounds` 关联入站
 
-### 管理员操作
+---
 
-1. 添加节点服务器
-   - 填写服务器IP、SSH信息
-   - 点击"SSH安装"自动安装x-ui
-   - 安装完成后节点自动上线
+## 文档
 
-2. 配置节点入站
-   - 在节点上配置vmess/vless/trojan等协议
-   - 创建节点模板方便批量配置
+- [DEPLOY.md](../DEPLOY.md) — 完整部署 + 故障排查
+- [DEVELOPMENT.md](DEVELOPMENT.md) — 开发指南
 
-3. 创建套餐
-   - 设置流量、时长、价格
-   - 启用套餐供用户购买
-
-### 用户操作
-
-1. 注册登录账户
-2. 购买套餐
-3. 获取订阅链接
-4. 导入客户端使用
-
-## 项目结构
-
-```
-NexCoreProxy-Master/
-├── main.go                 # 后端入口
-├── nexcore                 # 编译后的二进制文件
-├── install.sh              # 一键安装脚本
-├── start.sh                # 启动脚本
-├── stop.sh                 # 停止脚本
-├── internal/
-│   ├── model/              # 数据模型
-│   ├── service/            # 业务逻辑
-│   │   ├── node.go         # 节点服务（SSH安装、API管理、订阅生成）
-│   │   └── user.go         # 用户服务
-│   └── handler/            # API处理器
-├── web/                    # 前端项目
-│   ├── src/                # 源码
-│   └── dist/               # 构建产物
-└── data/                   # 数据目录
-```
-
-## API接口
-
-### 公开接口
-- `GET /api/packages` - 套餐列表
-- `GET /api/sub/:token` - 订阅链接
-
-### 认证接口
-- `POST /api/login` - 登录
-- `GET /api/my/subscribe` - 我的订阅
-
-### 管理员接口
-- `GET /api/nodes` - 节点列表
-- `POST /api/nodes/:id/install` - SSH安装节点
-- `POST /api/nodes/:id/sync` - 同步节点状态
-
-## 关联项目
-
-- **NexCoreProxy-Host**: 节点服务端 (基于 x-ui)
+---
 
 ## License
 

@@ -19,8 +19,10 @@ fi
 SERVICE_NAME="nexcoreproxy-master"
 GITHUB_REPO="DoBestone/NexCoreProxy-Master"
 BINARY_NAME="nexcore-master"
+AGENT_BINARY_NAME="ncp-agent"
 BINARY="$SCRIPT_DIR/bin/${BINARY_NAME}"
 ENV_FILE="$SCRIPT_DIR/.env"
+BINARY_DIR_FOR_AGENTS="$SCRIPT_DIR/binaries"
 
 # ── 颜色 ─────────────────────────────────────────────────────
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[1;33m'
@@ -226,6 +228,63 @@ _update_from_release() {
     curl -fsSL "$update_url" -o "${SCRIPT_DIR}/update.sh" 2>/dev/null || true
     chmod +x "${SCRIPT_DIR}/update.sh" 2>/dev/null || true
   fi
+
+  # 下载 ncp-agent 二进制到 binaries/（master 通过 /api/binaries 服务节点）
+  mkdir -p "$BINARY_DIR_FOR_AGENTS"
+  local arch agent_url
+  for arch in amd64 arm64; do
+    local asset="${AGENT_BINARY_NAME}-linux-${arch}"
+    agent_url=$(echo "$RELEASE_JSON" \
+      | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*${asset}[^\"]*\"" \
+      | head -1 | cut -d'"' -f4 || true)
+    if [ -n "$agent_url" ]; then
+      info "下载 ${asset}..."
+      if curl -fsSL "$agent_url" -o "${BINARY_DIR_FOR_AGENTS}/${asset}.new"; then
+        chmod +x "${BINARY_DIR_FOR_AGENTS}/${asset}.new"
+        mv -f "${BINARY_DIR_FOR_AGENTS}/${asset}.new" "${BINARY_DIR_FOR_AGENTS}/${asset}"
+        ok "${asset} 已更新"
+      else
+        warn "${asset} 下载失败"
+        rm -f "${BINARY_DIR_FOR_AGENTS}/${asset}.new"
+      fi
+    fi
+  done
+
+  # 同步下发节点安装脚本（管理员手动 SSH 装节点时用）
+  local install_agent_url
+  install_agent_url=$(echo "$RELEASE_JSON" \
+    | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*install-agent\.sh[^\"]*\"" \
+    | head -1 | cut -d'"' -f4 || true)
+  if [ -n "$install_agent_url" ]; then
+    curl -fsSL "$install_agent_url" -o "${SCRIPT_DIR}/install-agent.sh" 2>/dev/null || true
+    chmod +x "${SCRIPT_DIR}/install-agent.sh" 2>/dev/null || true
+  fi
+}
+
+# ── 检查 .env 是否缺 v2.0 字段，缺了就给提示 ──
+_check_env_v2_fields() {
+  [ -f "$ENV_FILE" ] || return 0
+  local missing=()
+  for key in MASTER_URL AGENT_BINARY_URL NCP_BINARY_DIR; do
+    grep -qE "^${key}=" "$ENV_FILE" || missing+=("$key")
+  done
+  [ ${#missing[@]} -eq 0 ] && return 0
+  echo ""
+  warn "检测到 .env 缺少 v2.0 新字段：${missing[*]}"
+  warn "为让节点端 ncp-agent 能正常部署/回连，请在 ${ENV_FILE} 末尾追加："
+  cat <<EOF
+  ${DIM}─────────────────────────────────────────────${N}
+  MASTER_URL=https://master.example.com
+  AGENT_BINARY_URL=\${MASTER_URL}/api/binaries/ncp-agent-linux-\${ARCH}
+  NCP_BINARY_DIR=${SCRIPT_DIR}/binaries
+  ALERT_EMAIL=
+  XRAY_VERSION=1.8.24
+  AGENT_VERSION=0.1.0
+  BACKUP_DIR=${SCRIPT_DIR}/backups
+  ${DIM}─────────────────────────────────────────────${N}
+EOF
+  warn "并把 systemd ExecStart 中加上："
+  echo -e "  ${DIM}--master-url \${MASTER_URL} --agent-binary-url \${AGENT_BINARY_URL}${N}"
 }
 
 # ── 主流程 ────────────────────────────────────────────────────
@@ -238,14 +297,13 @@ echo ""
 _backup
 _stop_service
 _update_from_release
+_check_env_v2_fields
 _start_service
 
 echo ""
 echo -e "  ${G}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
 echo -e "  ${G}✓${N} 更新完成: ${DIM}${CURRENT}${N} → ${W}${LATEST}${N}"
 echo -e "  ${DIM}配置备份: ${SCRIPT_DIR}/.backup/${N}"
-if [ -f "$ENV_FILE" ]; then
-  echo -e "  ${Y}⚠${N}  配置文件 .env 未被覆盖，如有新配置项请手动添加"
-fi
+echo -e "  ${DIM}节点二进制: ${BINARY_DIR_FOR_AGENTS}${N}"
 echo -e "  ${G}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
 echo ""

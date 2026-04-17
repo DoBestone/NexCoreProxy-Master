@@ -14,7 +14,10 @@ set -euo pipefail
 GITHUB_REPO="DoBestone/NexCoreProxy-Master"
 SERVICE_NAME="nexcoreproxy-master"
 BINARY_NAME="nexcore-master"
+AGENT_BINARY_NAME="ncp-agent"
 DEFAULT_INSTALL_DIR="/opt/nexcoreproxy-master"
+DEFAULT_XRAY_VERSION="1.8.24"
+DEFAULT_AGENT_VERSION="0.1.0"
 
 # ── 全局变量 ──────────────────────────────────────────────────
 OS="" ARCH="" PKG_MGR=""
@@ -25,6 +28,7 @@ JWT_SECRET=""
 USE_DOMAIN=false DOMAIN="" USE_NGINX=false USE_SSL=false CERTBOT_EMAIL=""
 MYSQL_ROOT_MODE="" MYSQL_ROOT_PASSWORD=""
 NEED_INSTALL_MYSQL=false
+MASTER_URL="" ALERT_EMAIL=""
 
 # ── 颜色 ─────────────────────────────────────────────────────
 R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m'
@@ -122,6 +126,22 @@ collect_config() {
     fi
   fi
 
+  # ── Master 公网 URL（节点 ncp-agent 回连用，必须公网可达） ──
+  step "节点回连地址（必填）"
+  info "节点上的 ncp-agent 周期性向 Master 拉配置 + 推流量，需要一个公网可达的地址"
+  local default_master_url=""
+  if $USE_SSL; then
+    default_master_url="https://${DOMAIN}"
+  elif $USE_DOMAIN; then
+    default_master_url="http://${DOMAIN}"
+  else
+    local ip
+    ip=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
+    [ -n "$ip" ] && default_master_url="http://${ip}:${WEB_PORT}"
+  fi
+  MASTER_URL=$(prompt_input "Master 公网 URL（节点 agent 回连）" "${default_master_url:-https://master.example.com}")
+  ALERT_EMAIL=$(prompt_input "节点离线告警邮箱（留空则用首个 admin 邮箱）" "")
+
   # 生成随机密钥
   JWT_SECRET=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || true)
 
@@ -131,6 +151,8 @@ collect_config() {
   echo -e "  Web 端口      ${W}${WEB_PORT}${N}"
   echo -e "  管理员        ${W}${ADMIN_USER}${N} / ${DIM}(已设置)${N}"
   echo -e "  MySQL         ${W}${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${N}"
+  echo -e "  Master URL    ${W}${MASTER_URL}${N}"
+  [ -n "$ALERT_EMAIL" ] && echo -e "  告警邮箱      ${W}${ALERT_EMAIL}${N}"
   if $USE_DOMAIN; then
     echo -e "  域名          ${W}${DOMAIN}${N}"
     echo -e "  SSL           ${W}$($USE_SSL && echo '是' || echo '否')${N}"
@@ -545,6 +567,7 @@ download_release() {
   ok "后端二进制下载完成"
 
   download_frontend_dist "$release_info"
+  download_agent_binaries "$release_info"
 
   # 下载 update.sh 到安装目录
   local update_url
@@ -556,6 +579,32 @@ download_release() {
   fi
 
   INSTALL_MODE="预编译二进制"
+}
+
+# ── 下载 ncp-agent 二进制（amd64 + arm64，给节点端拉取用） ──
+download_agent_binaries() {
+  local release_info="$1"
+  info "下载 ncp-agent 二进制（amd64 + arm64）..."
+  mkdir -p "${INSTALL_DIR}/binaries"
+
+  local arch found=0
+  for arch in amd64 arm64; do
+    local asset="${AGENT_BINARY_NAME}-linux-${arch}"
+    local url
+    url=$(echo "$release_info" | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*${asset}[^\"]*\"" | head -1 | cut -d'"' -f4 || true)
+    if [ -z "$url" ]; then
+      warn "Release 中未找到 ${asset}（节点 install-agent.sh 将无法从本机下载）"
+      continue
+    fi
+    curl -fsSL "$url" -o "${INSTALL_DIR}/binaries/${asset}"
+    chmod +x "${INSTALL_DIR}/binaries/${asset}"
+    ok "${asset} 下载完成"
+    found=$((found+1))
+  done
+
+  if [ "$found" = "0" ]; then
+    warn "未下载到任何 ncp-agent 二进制；节点端部署将失败"
+  fi
 }
 
 # ── 下载预编译前端 ────────────────────────────────────────────
@@ -595,6 +644,21 @@ DB_PASS=${DB_PASS}
 JWT_SECRET=${JWT_SECRET}
 NCP_ADMIN_USER=${ADMIN_USER}
 NCP_ADMIN_PASS=${ADMIN_PASS}
+
+# === v2.0 自研 agent 架构 ===
+# 节点 ncp-agent 回连地址（必须公网可达）
+MASTER_URL=${MASTER_URL}
+# 节点端拉 ncp-agent 二进制的完整 URL；\${ARCH} 占位符由节点侧 install-agent.sh 替换
+AGENT_BINARY_URL=${MASTER_URL}/api/binaries/ncp-agent-linux-\${ARCH}
+# ncp-agent 二进制下发目录（master 通过 /api/binaries/:name 服务）
+NCP_BINARY_DIR=${INSTALL_DIR}/binaries
+# 节点离线告警邮箱
+ALERT_EMAIL=${ALERT_EMAIL}
+# 目标版本（agent / xray 与本值不一致时触发自升级）
+XRAY_VERSION=${DEFAULT_XRAY_VERSION}
+AGENT_VERSION=${DEFAULT_AGENT_VERSION}
+# 数据库备份目录
+BACKUP_DIR=${INSTALL_DIR}/backups
 EOF
   chmod 600 "${INSTALL_DIR}/.env"
   ok ".env 配置已生成（权限 600）"
@@ -846,7 +910,14 @@ Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${INSTALL_DIR}/.env
-ExecStart=${INSTALL_DIR}/bin/${BINARY_NAME} -port \${PORT} -db-host \${DB_HOST} -db-port \${DB_PORT} -db-user \${DB_USER} -db-pass \${DB_PASS} -db-name \${DB_NAME}
+ExecStart=${INSTALL_DIR}/bin/${BINARY_NAME} \\
+  --port \${PORT} \\
+  --db-host \${DB_HOST} --db-port \${DB_PORT} \\
+  --db-user \${DB_USER} --db-pass \${DB_PASS} --db-name \${DB_NAME} \\
+  --master-url \${MASTER_URL} \\
+  --agent-binary-url \${AGENT_BINARY_URL} \\
+  --xray-version \${XRAY_VERSION} \\
+  --agent-version \${AGENT_VERSION}
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
