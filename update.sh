@@ -220,13 +220,19 @@ _update_from_release() {
   fi
 
   # 更新 update.sh 自身
+  #
+  # ⚠️ 关键：必须先写 .new 再 mv 重命名（rename 给新 inode）；
+  # 不能 curl 直接 -o update.sh —— bash 还在读这个 fd，
+  # 直接覆写 inode 内容会让 bash 后半段 bytes 错位语法崩
   local update_url
   update_url=$(echo "$RELEASE_JSON" \
     | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*update\.sh[^\"]*\"" \
     | head -1 | cut -d'"' -f4 || true)
   if [ -n "$update_url" ]; then
-    curl -fsSL "$update_url" -o "${SCRIPT_DIR}/update.sh" 2>/dev/null || true
-    chmod +x "${SCRIPT_DIR}/update.sh" 2>/dev/null || true
+    if curl -fsSL "$update_url" -o "${SCRIPT_DIR}/update.sh.new" 2>/dev/null; then
+      chmod +x "${SCRIPT_DIR}/update.sh.new"
+      mv -f "${SCRIPT_DIR}/update.sh.new" "${SCRIPT_DIR}/update.sh"
+    fi
   fi
 
   # 下载 ncp-agent 二进制到 binaries/（master 通过 /api/binaries 服务节点）
@@ -256,8 +262,10 @@ _update_from_release() {
     | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*install-agent\.sh[^\"]*\"" \
     | head -1 | cut -d'"' -f4 || true)
   if [ -n "$install_agent_url" ]; then
-    curl -fsSL "$install_agent_url" -o "${SCRIPT_DIR}/install-agent.sh" 2>/dev/null || true
-    chmod +x "${SCRIPT_DIR}/install-agent.sh" 2>/dev/null || true
+    if curl -fsSL "$install_agent_url" -o "${SCRIPT_DIR}/install-agent.sh.new" 2>/dev/null; then
+      chmod +x "${SCRIPT_DIR}/install-agent.sh.new"
+      mv -f "${SCRIPT_DIR}/install-agent.sh.new" "${SCRIPT_DIR}/install-agent.sh"
+    fi
   fi
 }
 
