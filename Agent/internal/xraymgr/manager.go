@@ -55,8 +55,8 @@ func (m *Manager) Reload(raw []byte) error {
 	}
 
 	if err := m.testConfig(tmp); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("xray config validation failed: %w", err)
+		// 故意保留 .new 文件供调试：检查 /usr/local/etc/xray/config.json.new 看渲染结果
+		return fmt.Errorf("xray config validation failed (新配置保留在 %s 供检查): %w", tmp, err)
 	}
 
 	if err := os.Rename(tmp, m.ConfigPath); err != nil {
@@ -67,11 +67,13 @@ func (m *Manager) Reload(raw []byte) error {
 }
 
 func (m *Manager) testConfig(path string) error {
-	cmd := exec.Command(m.XrayBin, "test", "-c", path)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %s", err, strings.TrimSpace(stderr.String()))
+	// xray 用 dash-prefix flag："xray -test -c <file>"，不是 "xray test ..."
+	// 报错日志输出到 stdout 不是 stderr，所以用 CombinedOutput。
+	// 显式 -format json：xray 默认按文件后缀判断格式，我们用 .json.new 临时名会让它不认。
+	cmd := exec.Command(m.XrayBin, "-test", "-format", "json", "-c", path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

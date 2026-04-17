@@ -89,6 +89,15 @@
       @ok="onSubmit"
     >
       <a-form :model="form" layout="vertical" class="inbound-form">
+        <a-alert
+          v-if="!form.id"
+          message="极简模式：只需选协议 + 节点，其他全部自动。Reality 密钥、SS PSK、WS path 都由系统生成。"
+          type="info"
+          show-icon
+          class="thin-alert"
+          style="margin-bottom: 12px"
+        />
+
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="节点" required>
@@ -98,107 +107,98 @@
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="名称" required>
-              <a-input v-model:value="form.name" placeholder="如 VLESS-Reality-443" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="Tag (xray inbound 唯一标识)" required>
-              <a-input v-model:value="form.tag" placeholder="vl-reality-443" class="mono-input" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
             <a-form-item label="协议" required>
               <a-select v-model:value="form.protocol">
-                <a-select-option value="vless">VLESS</a-select-option>
-                <a-select-option value="vmess">VMess</a-select-option>
-                <a-select-option value="trojan">Trojan</a-select-option>
-                <a-select-option value="ss">SS-2022</a-select-option>
-                <a-select-option value="hysteria2">Hysteria2</a-select-option>
-                <a-select-option value="tuic">TUIC</a-select-option>
+                <a-select-option value="vless">VLESS + Reality (推荐)</a-select-option>
+                <a-select-option value="vmess">VMess + TLS</a-select-option>
+                <a-select-option value="trojan">Trojan + TLS</a-select-option>
+                <a-select-option value="ss">Shadowsocks-2022</a-select-option>
+                <a-select-option value="hysteria2">Hysteria2 (UDP)</a-select-option>
+                <a-select-option value="tuic">TUIC v5 (UDP)</a-select-option>
               </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item label="端口" required>
-              <a-input-number v-model:value="form.port" :min="1" :max="65535" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="16">
-          <a-col :span="6">
-            <a-form-item label="网络">
-              <a-select v-model:value="form.network" allowClear>
-                <a-select-option value="tcp">tcp</a-select-option>
-                <a-select-option value="ws">ws</a-select-option>
-                <a-select-option value="grpc">grpc</a-select-option>
-                <a-select-option value="h2">h2</a-select-option>
-                <a-select-option value="quic">quic</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item label="安全">
-              <a-select v-model:value="form.security" allowClear>
-                <a-select-option value="none">none</a-select-option>
-                <a-select-option value="tls">tls</a-select-option>
-                <a-select-option value="reality">reality</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="端口跳跃 (Hy2)">
-              <a-input v-model:value="form.portRange" placeholder="20000-30000" class="mono-input" />
             </a-form-item>
           </a-col>
         </a-row>
 
-        <!-- Reality 区 -->
-        <template v-if="form.security === 'reality'">
-          <a-divider orientation="left" plain class="thin-divider">Reality</a-divider>
+        <a-form-item>
+          <a-checkbox v-model:checked="showAdvanced">显示高级选项</a-checkbox>
+        </a-form-item>
+
+        <template v-if="showAdvanced">
           <a-row :gutter="16">
-            <a-col :span="12">
-              <a-form-item label="伪装 SNI">
-                <a-input v-model:value="form.realitySni" placeholder="www.microsoft.com" />
+            <a-col :span="8">
+              <a-form-item label="端口 (留空按协议默认)">
+                <a-input-number v-model:value="form.port" :min="0" :max="65535" style="width: 100%" placeholder="auto" />
               </a-form-item>
             </a-col>
-            <a-col :span="12">
-              <a-form-item label="Dest">
-                <a-input v-model:value="form.realityDest" placeholder="www.microsoft.com:443" class="mono-input" />
+            <a-col :span="8">
+              <a-form-item label="名称 (留空自动)">
+                <a-input v-model:value="form.name" placeholder="auto" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="8">
+              <a-form-item label="Tag (留空自动)">
+                <a-input v-model:value="form.tag" placeholder="auto" class="mono-input" />
               </a-form-item>
             </a-col>
           </a-row>
-          <a-alert v-if="!form.id" message="保存后系统将自动生成 X25519 密钥对与 ShortID。" type="info" show-icon class="thin-alert" />
-        </template>
-
-        <!-- TLS 证书域名（自动签发） -->
-        <template v-if="form.security === 'tls'">
-          <a-form-item label="TLS 证书域名 (留空表示手动维护)">
+          <a-row :gutter="16">
+            <a-col :span="6">
+              <a-form-item label="网络">
+                <a-select v-model:value="form.network" allowClear placeholder="auto">
+                  <a-select-option value="tcp">tcp</a-select-option>
+                  <a-select-option value="ws">ws</a-select-option>
+                  <a-select-option value="grpc">grpc</a-select-option>
+                  <a-select-option value="h2">h2</a-select-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+            <a-col :span="6">
+              <a-form-item label="安全层">
+                <a-select v-model:value="form.security" allowClear placeholder="auto">
+                  <a-select-option value="none">none</a-select-option>
+                  <a-select-option value="tls">tls</a-select-option>
+                  <a-select-option value="reality">reality</a-select-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="端口跳跃 (仅 Hy2)">
+                <a-input v-model:value="form.portRange" placeholder="20000-30000" class="mono-input" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-row :gutter="16" v-if="form.security === 'reality'">
+            <a-col :span="12">
+              <a-form-item label="伪装 SNI (留空随机)">
+                <a-input v-model:value="form.realitySni" placeholder="auto" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="Dest (留空随机)">
+                <a-input v-model:value="form.realityDest" placeholder="auto" class="mono-input" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-form-item v-if="form.security === 'tls'" label="TLS 证书域名 (ACME 自动签发)">
             <a-input v-model:value="form.certDomain" placeholder="node1.example.com" class="mono-input" />
           </a-form-item>
+          <a-form-item label="settings JSON (可选)">
+            <a-textarea v-model:value="form.settingsJson" :rows="3" class="mono-input" placeholder="auto" />
+          </a-form-item>
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item label="streamSettings JSON (可选)">
+                <a-textarea v-model:value="form.streamJson" :rows="3" class="mono-input" placeholder="auto" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="tls/reality JSON (可选)">
+                <a-textarea v-model:value="form.tlsJson" :rows="3" class="mono-input" placeholder="auto" />
+              </a-form-item>
+            </a-col>
+          </a-row>
         </template>
-
-        <a-row :gutter="16">
-          <a-col :span="24">
-            <a-form-item label="协议 settings JSON (可选，会与系统注入的 clients 合并)">
-              <a-textarea v-model:value="form.settingsJson" :rows="3" class="mono-input" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="streamSettings JSON">
-              <a-textarea v-model:value="form.streamJson" :rows="3" class="mono-input" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="tls/reality JSON">
-              <a-textarea v-model:value="form.tlsJson" :rows="3" class="mono-input" />
-            </a-form-item>
-          </a-col>
-        </a-row>
       </a-form>
     </a-modal>
   </div>
@@ -219,6 +219,7 @@ const rows = ref([])
 const nodes = ref([])
 const filterNodeId = ref(null)
 const modalOpen = ref(false)
+const showAdvanced = ref(false)
 const form = ref(emptyForm())
 
 const columns = [
@@ -232,12 +233,13 @@ const columns = [
   { title: '操作', key: 'actions', width: 160 },
 ]
 
+// 默认大部分字段留空，让后端 autofill 生成随机值
 function emptyForm() {
   return {
     id: 0, nodeId: null, name: '', tag: '',
-    protocol: 'vless', port: 443, portRange: '',
-    network: 'tcp', security: 'reality',
-    realitySni: 'www.microsoft.com', realityDest: 'www.microsoft.com:443',
+    protocol: 'vless', port: 0, portRange: '',
+    network: '', security: '',
+    realitySni: '', realityDest: '',
     certDomain: '',
     settingsJson: '', streamJson: '', tlsJson: '',
   }
@@ -265,11 +267,13 @@ async function fetchNodes() {
 function openCreate() {
   form.value = emptyForm()
   if (filterNodeId.value) form.value.nodeId = filterNodeId.value
+  showAdvanced.value = false
   modalOpen.value = true
 }
 
 function openEdit(row) {
   form.value = { ...row }
+  showAdvanced.value = true // 编辑时直接展开
   modalOpen.value = true
 }
 

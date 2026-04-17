@@ -5,7 +5,10 @@
 //
 // 命令格式（xray 1.8+）:
 //
-//	xray api stats --server=127.0.0.1:10085 -reset -pattern user
+//	xray api statsquery --server=127.0.0.1:10085 -reset -pattern user
+//
+// 注意：是 statsquery 不是 stats —— stats 子命令只能查单个 -name，
+// statsquery 才支持 -pattern 批量列出。
 //
 // 输出 JSON:
 //
@@ -51,7 +54,7 @@ type rawResp struct {
 // 当前只填 stats（按 email 聚合 up/down）。online 暂返回 nil，待后续从 xray inbound
 // 连接表或自定义 access log 解析后填充。
 func (c *Client) Drain(ctx context.Context) (map[string]protocol.TrafficDelta, map[string][]string, error) {
-	cmd := exec.CommandContext(ctx, c.XrayBin, "api", "stats",
+	cmd := exec.CommandContext(ctx, c.XrayBin, "api", "statsquery",
 		"--server="+c.APIServer, "-reset", "-pattern", "user")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

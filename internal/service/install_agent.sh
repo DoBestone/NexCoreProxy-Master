@@ -25,7 +25,10 @@ die() { echo "[install-agent][error] $*" >&2; exit 1; }
 [[ -n "${NCP_NODE_TOKEN:-}" ]]  || die "NCP_NODE_TOKEN not set"
 
 XRAY_VERSION="${XRAY_VERSION:-1.8.24}"
-NCP_AGENT_URL="${NCP_AGENT_URL:-${NCP_MASTER_URL}/api/binaries/ncp-agent-linux-\${ARCH}}"
+# 别用 ${var:-${other}/...\${ARCH}} 嵌套形式 —— bash 解析里的 } 转义有坑会多出 }
+if [ -z "${NCP_AGENT_URL:-}" ]; then
+  NCP_AGENT_URL="${NCP_MASTER_URL}/api/binaries/ncp-agent-linux-\${ARCH}"
+fi
 
 # --- 1. OS / 架构检测 ---
 ARCH_RAW="$(uname -m)"
@@ -173,7 +176,8 @@ EOF
 # --- 7. 安装 ncp-agent ---
 log "installing ncp-agent"
 mkdir -p /etc/ncp-agent /var/lib/ncp-agent /var/log/ncp-agent /usr/local/etc/xray
-url="${NCP_AGENT_URL/\$\{ARCH\}/$ARCH}"  # 替换 ${ARCH} 占位
+# 替换 ${ARCH} 占位：bash ${var/pat/repl} 里转义 } 有 parser 坑，直接 sed
+url=$(echo "$NCP_AGENT_URL" | sed "s|\${ARCH}|$ARCH|g")
 tmp="$(mktemp)"
 curl -fsSL -o "$tmp" "$url" || die "download ncp-agent failed: $url"
 install -m 0755 "$tmp" /usr/local/bin/ncp-agent

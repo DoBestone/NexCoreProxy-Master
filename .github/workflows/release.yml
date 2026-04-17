@@ -30,8 +30,10 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"  # 去掉 tag 前的 v，代码里 Printf("v%s") 会再加上
           go build -trimpath \
-            -ldflags="-s -w -X main.version=${{ github.ref_name }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags="-s -w -X main.version=$VER -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o nexcore-master-${{ matrix.goos }}-${{ matrix.goarch }} .
       - uses: actions/upload-artifact@v4
         with:
